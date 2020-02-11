@@ -1,0 +1,49 @@
+cabal-version: 2.4
+name: hasdb
+version: 0.1.0
+license: BSD-3-Clause
+copyright: 2019 Compl Yue
+maintainer: compl.yue@icloud.com
+author: Compl Yue
+stability: experimental
+homepage: https://github.com/e-wrks/hasdb
+bug-reports: https://github.com/e-wrks/hasdb/issues
+synopsis: Instant Messaging in Edh
+description:
+    Please see the README on Github at <https://github.com/e-wrks/hasdb>
+category: Concurrency,Web
+build-type: Simple
+extra-source-files:
+    README.md
+
+source-repository head
+    type: git
+    location: https://github.com/e-wrks/hasdb
+
+executable hasdb
+    main-is: Main.hs
+    hs-source-dirs: src
+    other-modules:
+        ChatWorld
+        Paths_hasdb
+    default-language: Haskell2010
+    default-extensions: NoImplicitPrelude OverloadedStrings LambdaCase
+                        BangPatterns TupleSections ScopedTypeVariables
+    ghc-options: -Wall -threaded
+    build-depends:
+        ghc >=8.6.5,
+        base >=4.12 && <5,
+        stm >=2.5,
+        edh -any,
+        containers -any,
+        unix -any,
+        clock -any,
+        network -any,
+        websockets -any,
+        snap-core -any,
+        snap-server -any,
+        text -any,
+        bytestring -any,
+        mtl -any,
+        transformers -any,
+        neat-interpolation -any
