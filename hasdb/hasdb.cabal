@@ -25,7 +25,6 @@ executable hasdb
     hs-source-dirs: src
     other-modules:
         ChatWorld
-        Paths_hasdb
     default-language: Haskell2010
     default-extensions: NoImplicitPrelude OverloadedStrings LambdaCase
                         BangPatterns TupleSections ScopedTypeVariables
