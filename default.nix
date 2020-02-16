@@ -14,12 +14,12 @@ import (
       let
         myHaskellPackageSet = super.haskellPackages.override {
           overrides = hself: hsuper: {
-            edhim = hself.callCabal2nix "edhim" ./edhim { };
+            hasdb = hself.callCabal2nix "hasdb" ./hasdb { };
           };
         };
       in {
         # expose as a top-level Nix package too
-        edhim = myHaskellPackageSet.edhim;
+        hasdb = myHaskellPackageSet.hasdb;
 
         # override the Haskell package set at standard locations
         haskellPackages = myHaskellPackageSet;
