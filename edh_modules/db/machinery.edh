@@ -1,0 +1,78 @@
+
+class DataBack (persistSink) {
+
+  _last_eid = 0  # last entity identifier
+  _extent = {,}
+
+  method restore (restoreSessions, sessionDoneSig) {
+    for (rsid, dataIntake, eosSig) from restoreSessions do {
+      go {
+        defer sessionDoneSig <- rsid  # signal session done on thread term
+        reactor eosSig _ { break }  # terminate thread on end-of-session
+        for txChgs from dataIntake do {
+          for (eClass, eid, attrChgs) from txChgs do case eClass of {
+            # delete
+            nil -> this._extent[eid] = nil
+
+            bo = this._extent[eid]
+
+            # creation
+            ;| nil == bo -> {
+              bo = makeBusObj ( ... )  # TODO impl. as host procedure
+            }
+            
+            # update
+            ;| constructor(bo) != eClass -> {
+                runtime.warn<| 'business object ' ++ eid ++ ' class mismatch ' ++ eClass 
+            }
+            case dataObj of {{ BackedData: bd }} ->
+                for (attrName, attrVal) from attrChgs do {
+                  bd.boScope.insert (attrName, attrVal)
+                }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  method newSuper () {
+    BackedData(this, this._last_eid += 1)
+  }
+
+}
+
+
+class BackedData (db, eid) {
+
+  method (<-^) (boScope) {
+    this.eClass = constructor(that)
+
+    # persist all `boScope.attrs()` to db.persistSink
+
+    for (attrKey, attrVal) from boScope.attrs() do case type(attrVal) of {
+      MethodType -> nil  # don't persist methods
+
+      # TODO handle relationships
+
+      this.db.persistSink <- (this.eClass, this.eid, attrKey, attrVal)
+    }
+
+    # reference it by eid
+    this.db._extent[this.eid] = that
+  }
+
+  # handles `this.xxx = yyy` from a business child (referred to by `that`)
+  method (<-@) (attrKey, attrVal) case type(attrVal) of {
+    MethodType -> nil  # don't persist methods
+
+    # TODO handle relationships
+
+    this.db.persistSink <- (this.eClass, this.eid, attrKey, attrVal)
+  }
+
+  # handles `obj.xxx = yyy` for `obj` being a business child (referred to by `that`)
+  (*<-@) = (<-@)  # use same method, treat internal/external attr update the same
+
+}
+
