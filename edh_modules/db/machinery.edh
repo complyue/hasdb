@@ -17,8 +17,8 @@ class DataBack (persistSink) {
               nil -> this._extent[eid] = nil
 
               # creation
-              {{ BackedData: bd }} -> {
-                bd.eid != eid -> error 'bo eid from data intake mismatch, ' ++ bd.eid
+              {{ SuperBack: sb }} -> {
+                sb.eid != eid -> error 'bo eid from data intake mismatch, ' ++ sb.eid
                   ++ ' vs ' ++ eid
                 this._extent[eid] = attrChgs
               }
@@ -29,12 +29,12 @@ class DataBack (persistSink) {
                 { bo } -> {
                   constructor(bo) != eClass ->  runtime.warn<| 'business object '
                     ++ eid ++ ' class mismatch ' ++ constructor(bo) ++ ' vs ' ++ eClass
-                  case bo of {{ BackedData: bd }} -> {
+                  case bo of {{ SuperBack: sb }} -> {
                     ;| bo.eid != eid -> runtime.error<| 'business object eid mismatch '
                       ++ bo.eid ++ ' vs ' ++ eid
                     for (attrName, attrVal) from attrChgs do {
                       # TODO putAttr yet to be impl.
-                      bd.boScope.putAttr (attrName, attrVal)
+                      sb.boScope.putAttr (attrName, attrVal)
                     }
                   }
                 }
@@ -46,48 +46,96 @@ class DataBack (persistSink) {
     }
   }
 
-  method newSuper () {
-    BackedData(this, this._last_eid += 1)
+  method superBack () {
+    SuperBack(this, this._last_eid += 1)
   }
 
-}
+  # put the databack instance into the lexical context of its methods as `db`
+  db = this
 
-
-class BackedData (db, eid) {
-
-  # handles `extends db.newSuper()` from a business object's class proc
-  method (<-^) (boScope) {
+  # to be installed to every `SuperBack` as (<-^)
+  method _armSuper (boScope) {
     this?boScope &> error (
-      'bug: more than 1 business objects per BackedData as super'
+      'bug: more than 1 business objects per SuperBack instance'
     )
     this.boScope = boScope
 
-    # persist new business object through db.persistSink
-    db.persistSink <- (constructor(that), eid, that)
+    # TODO process relationships
 
-    # keep a reference to it by eid
-    this.db._extent[this.eid] = that
+    # persist new business object through `db.persistSink`
+    db.persistSink <- (constructor(that), this.eid, that)
+
+    # keep a reference to it by this.eid
+    db._extent[this.eid] = that
   }
+
+  # to be installed to every `SuperBack` as (<-@) and (*<-@)
+  method _setBoAttr (attrKey, attrVal) case type(attrVal) of {
+
+    {[
+      nil,  # clearing attribute value
+      BoolType, DecimalType, StringType,  # literal values
+      PairType, TupleType, ListType, DictType,  # containers
+      ArgsPackType,  # complexer container
+    ]} -> case type(that?$attrKey) of {
+      {[
+        nil,  # clearing attribute value
+        BoolType, DecimalType, StringType,  # literal values
+        PairType, TupleType, ListType, DictType,  # containers
+        ArgsPackType,  # complexer container
+      ]} -> {
+        # TODO validate deep content of containers are reconstructable from repr
+        db.persistSink <- (constructor(that), this.eid, [(attrKey, attrVal)])
+
+        # update the business object's attribute value
+        that$attrKey = attrVal
+
+        # TODO returning `continue` will let the other super(s) (if any present),
+        # or the default behavior (if this is the bottom super) set the attr, rendering
+        # the above assignment unnecessary
+        continue  # pass control to other magical supers if any
+      }
+      error ('unexpected business object ' ++ this.eid ++ ' attr type change: '
+          ++ type(that$attrKey) ++ ' to ' ++ type(attrVal))
+    }
+
+    ObjectType -> case attrVal of {
+      {{ SuperBack: sbNewKin }} -> case that?$attrKey of {
+        {{ SuperBack: sbOldKin }} -> {
+          # TODO change of relationship
+
+        }
+        nil -> {
+          # TODO adding new relationship
+
+        }
+      }
+      runtime.warn<| 'non-backed-object ' ++ attrVal 
+        ++ ' not supported as persistent attr'
+    }
+
+    # leave as normal transient attribute
+    continue
+  }
+
+
+}
+
+class SuperBack (db, eid) {
+
+  # relationships by class
+  kins = {,}
+
+  # handles `extends db.superBack()` from a business object's class proc
+  (<-^) = db._armSuper
+
+  # use same method impl. for (<-@) and (*<-@), treating internal/external attr
+  # updates the same
 
   # handles `this.xxx = yyy` from a business child (referred to by `that`)
-  method (<-@) (attrKey, attrVal) case type(attrVal) of {
-    MethodType -> nil  # don't persist methods
-
-    # TODO handle relationships
-
-    this.db.persistSink <- (constructor(that), this.eid, [(attrKey, attrVal)])
-
-    # update the business object's attribute value
-    that$attrKey = attrVal
-
-    # TODO returning `continue` will let the other super(s) (if any present),
-    # or the default behavior (if this is the bottom super) set the attr, rendering
-    # the above assignment unnecessary
-    continue  # pass control to other magical supers if any
-  }
-
+  ( <-@) = db._setBoAttr
   # handles `obj.xxx = yyy` for `obj` being a business child (referred to by `that`)
-  (*<-@) = (<-@)  # use same method, treat internal/external attr update the same
+  (*<-@) = db._setBoAttr
 
 }
 
