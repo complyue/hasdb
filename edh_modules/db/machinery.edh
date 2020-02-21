@@ -4,31 +4,41 @@ class DataBack (persistSink) {
   _last_eid = 0  # last entity identifier
   _extent = {,}
 
-  method restore (restoreSessions, sessionDoneSig) {
-    for (rsid, dataIntake, eosSig) from restoreSessions do {
+  method restore (restoreSessions) {
+    for (rsid, dataIntake, sessionDoneSig) from restoreSessions do {
       go {
         defer sessionDoneSig <- rsid  # signal session done on thread term
-        reactor eosSig _ { break }  # terminate thread on end-of-session
         for txChgs from dataIntake do {
-          for (eClass, eid, attrChgs) from txChgs do case eClass of {
-            # delete
-            nil -> this._extent[eid] = nil
+          for txChg from txChgs do case txChg of {
+            nil -> break  # end-of-session
+            { (eClass, eid, attrChgs) } -> case attrChgs of {
 
-            bo = this._extent[eid]
+              # delete
+              nil -> this._extent[eid] = nil
 
-            # creation
-            ;| nil == bo -> {
-              bo = makeBusObj ( ... )  # TODO impl. as host procedure
-            }
-            
-            # update
-            ;| constructor(bo) != eClass -> {
-                runtime.warn<| 'business object ' ++ eid ++ ' class mismatch ' ++ eClass 
-            }
-            case dataObj of {{ BackedData: bd }} ->
-                for (attrName, attrVal) from attrChgs do {
-                  bd.boScope.insert (attrName, attrVal)
+              # creation
+              {{ BackedData: bd }} -> {
+                bd.eid != eid -> error 'bo eid from data intake mismatch, ' ++ bd.eid
+                  ++ ' vs ' ++ eid
+                this._extent[eid] = attrChgs
+              }
+
+              # update
+              case this._extent[eid] of -> {
+                nil -> runtime.error<| 'business object lost eid=' ++ eid
+                { bo } -> {
+                  constructor(bo) != eClass ->  runtime.warn<| 'business object '
+                    ++ eid ++ ' class mismatch ' ++ constructor(bo) ++ ' vs ' ++ eClass
+                  case bo of {{ BackedData: bd }} -> {
+                    ;| bo.eid != eid -> runtime.error<| 'business object eid mismatch '
+                      ++ bo.eid ++ ' vs ' ++ eid
+                    for (attrName, attrVal) from attrChgs do {
+                      # TODO putAttr yet to be impl.
+                      bd.boScope.putAttr (attrName, attrVal)
+                    }
+                  }
                 }
+
             }
           }
         }
@@ -45,20 +55,17 @@ class DataBack (persistSink) {
 
 class BackedData (db, eid) {
 
+  # handles `extends db.newSuper()` from a business object's class proc
   method (<-^) (boScope) {
-    this.eClass = constructor(that)
+    this?boScope &> error (
+      'bug: more than 1 business objects per BackedData as super'
+    )
+    this.boScope = boScope
 
-    # persist all `boScope.attrs()` to db.persistSink
+    # persist new business object through db.persistSink
+    db.persistSink <- (constructor(that), eid, that)
 
-    for (attrKey, attrVal) from boScope.attrs() do case type(attrVal) of {
-      MethodType -> nil  # don't persist methods
-
-      # TODO handle relationships
-
-      this.db.persistSink <- (this.eClass, this.eid, attrKey, attrVal)
-    }
-
-    # reference it by eid
+    # keep a reference to it by eid
     this.db._extent[this.eid] = that
   }
 
@@ -68,7 +75,15 @@ class BackedData (db, eid) {
 
     # TODO handle relationships
 
-    this.db.persistSink <- (this.eClass, this.eid, attrKey, attrVal)
+    this.db.persistSink <- (constructor(that), this.eid, [(attrKey, attrVal)])
+
+    # update the business object's attribute value
+    that$attrKey = attrVal
+
+    # TODO returning `continue` will let the other super(s) (if any present),
+    # or the default behavior (if this is the bottom super) set the attr, rendering
+    # the above assignment unnecessary
+    continue  # pass control to other magical supers if any
   }
 
   # handles `obj.xxx = yyy` for `obj` being a business child (referred to by `that`)
