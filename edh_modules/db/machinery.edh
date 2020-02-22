@@ -22,33 +22,68 @@ class DataBack (persistSink) {
         for txChgs from dataIntake do {
           for txChg from txChgs do case txChg of {
             nil -> break  # end-of-session
-            { (eClass, eid, attrChgs) } -> case attrChgs of {
+            { (boClass, eid, attrChgs) } -> case attrChgs of {
+              ai case this._extent[boClass] of {
+                nil -> this._extent[boClass] = ( bocExtent = {,} )
+                { bocExtent } -> { pass }
+              }
 
               # delete
-              nil -> this._extent[eid] = nil
+              nil -> {
+                # TODO disconnect all relationships
+
+                # unref the business object from db
+                bocExtent[eid] = nil
+              }
+
+              ai if eid > this._last_eid then this._last_eid = eid
 
               # creation
               {{ SuperBack: sb }} -> {
                 sb.eid != eid -> error 'bo eid from data intake mismatch, ' ++ sb.eid
                   ++ ' vs ' ++ eid
-                this._extent[eid] = attrChgs
+                # TODO connect all relationships
+
+                # ref the business object from db
+                bocExtent[eid] = attrChgs
               }
 
               # update
-              case this._extent[eid] of -> {
-                nil -> runtime.error<| 'business object lost eid=' ++ eid
-                { bo } -> {
-                  constructor(bo) != eClass ->  runtime.warn<| 'business object '
-                    ++ eid ++ ' class mismatch ' ++ constructor(bo) ++ ' vs ' ++ eClass
-                  case bo of {{ SuperBack: sb }} -> {
-                    ;| bo.eid != eid -> runtime.error<| 'business object eid mismatch '
-                      ++ bo.eid ++ ' vs ' ++ eid
-                    for (attrName, attrVal) from attrChgs do {
-                      # TODO putAttr yet to be impl.
-                      sb.boScope.putAttr (attrName, attrVal)
+              case bocExtent[eid] of -> {
+                nil -> runtime.error<| 'business object of class ' ++ boClass 
+                  ++ ' lost, with eid ' ++ eid
+                { bo } -> case bo of {{ SuperBack: sb }} -> {
+                  for (attrKey, attrVal) from attrChgs do case attrVal of {
+                    attrValOld = bo?$attrKey
+                    # TODO disconnect old relationship as necessary
+
+                    # TODO putAttr yet to be impl.
+                    {( refClass: refEid )} -> {
+                      # todo more friendly error msg if class/eid not found
+                      boTarget = this._extent[refClass][refEid]
+                      case boTarget of {{ SuperBack: sbTarget }} -> {
+                        # connect the relationship
+                        ai case sbTarget.kins[constructor(bo)] of {
+                          nil -> {
+                            sbTarget.kins[constructor(bo)] = {
+                              sb.eid: (1: bo)
+                            }
+                          }
+                          { kinCntr } -> {
+                            kinCntr[sb.eid] = case kinCntr[sb.eid] of {
+                              nil -> (1: bo)
+                              {( rc: _bo )} -> (rc+1: bo)
+                            }
+                          }
+                        }
+                        # ref from the bo
+                        sb.boScope.putAttr (attrKey, boTarget)
+                      }
                     }
+                    sb.boScope.putAttr (attrKey, attrVal)
                   }
                 }
+              }
 
             }
           }
