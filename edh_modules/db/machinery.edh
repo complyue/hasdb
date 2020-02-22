@@ -81,43 +81,66 @@ class DataBack (persistSink) {
   }
 
   # to be installed to every `SuperBack` as (<-@) and (*<-@)
-  method _setBoAttr (attrKey, attrVal) case type(attrVal) of {
+  method _setBoAttr (attrKey, attrVal) {
+    attrValOld = that?$attrKey
 
-    hasReConRepr(attrVal) -> {
-      hasReConRepr(that?$attrKey) -> {
-        db.persistSink <- (constructor(that), this.eid, [(attrKey, attrVal)])
-
-        # update the business object's attribute value
-        that$attrKey = attrVal
-
-        # TODO `continue` will let the other super(s) (if any present),
-        # or the default behavior (if this is the bottom super) set the attr,
-        # rendering the above assignment unnecessary
-        continue  # pass control to other magical supers if any
-      }
-      error ('unexpected business object ' ++ this.eid ++ ' attr type change: '
-          ++ type(that$attrKey) ++ ' to ' ++ type(attrVal))
-      continue  # no magic to impose
-    }
-
-    ObjectType -> case attrVal of {
-      boOldKin = that?$attrKey
-      {{ SuperBack: sbNewKin }} -> {
-        case boOldKin of {
-          nil -> {
-            # TODO adding new relationship
-
+    # disconnect old relationship as necessary
+    if attrValOld != attrVal then {
+      case attrValOld of {{ SuperBack: sbOldKin }} ->  {
+        case sbOldKin.kins[constructor(that)] of {
+          nil -> { runtime.fatal<| 'bug?' }
+          { kinCntrOld } -> ai case kinCntrOld[this.eid] of {
+            nil -> { runtime.fatal<| 'bug?' }
+            { rc: _that } -> kinCntrOld[this.eid] = if rc > 1
+              then (rc-1): that
+              else nil
           }
-          {{ SuperBack: sbOldKin }} -> {
-            # TODO change of relationship
-
-          }
-          error ('unexpected new business object replacing old object: '
-            ++ (boOldKin) ++ ' to ' ++ (attrVal))
         }
       }
-      runtime.warn<| 'non-backed-object ' ++ attrVal 
-        ++ ' treated as transient attribute ' ++ attrKey
+    }
+
+    # handle trivially representable values, including `nil`
+    hasReConRepr(attrVal) -> {
+      # update the attribute value before persist the change
+      that?$attrKey = attrVal
+
+      # persist the new attribute value
+      db.persistSink <- (constructor(that), this.eid, [(attrKey, attrVal)])
+    }
+
+    # handle object references
+    ObjectType == type(attrVal) -> case (boNewKin = attrVal) of {
+      {{ SuperBack: sbNewKin }} -> {
+        # establish new relationship
+        ai case sbNewKin.kins[constructor(that)] of {
+          nil -> {  # `that` is the first kin of its class to `boNewKin`
+            sbNewKin.kins[constructor(that)] = ( kinCntrNew = {
+              this.eid: (1: that)
+            } )
+          }
+          { kinCntrNew } -> {  # not the first kin of its class to `boNewKin`
+            case kinCntrNew[this.eid] of {
+              nil -> {
+                kinCntrNew[this.eid] = (1: that)
+              }
+              { rc: _that } -> {
+                kinCntrNew[this.eid] = (rc+1: that)
+              }
+            }
+          }
+        }
+
+        # persist the new relationship
+        db.persistSink <- (constructor(that), this.eid, [
+          (attrKey, constructor(boNewKin): sbNewKin.eid)]
+        )
+      }
+
+      runtime.warn<| 'non-backed-object ' ++ boNewKin 
+        ++ ' treated as transient attribute ' ++ attrKey 
+        ++ ' for business object ' ++ this.eid
+        ++ ' of class defined at ' ++ this.boScope.lexiLoc()
+      continue  # no magic to impose
     }
 
     # leave as normal transient attribute
@@ -125,9 +148,8 @@ class DataBack (persistSink) {
       ++ ' treated as transient attribute ' ++ attrKey 
       ++ ' for business object ' ++ this.eid
       ++ ' of class defined at ' ++ this.boScope.lexiLoc()
-    continue
+    continue  # no magic to impose
   }
-
 
 }
 
