@@ -1,4 +1,15 @@
 
+method hasReConRepr (attrVal) {
+ return type(attrVal) ?<= [
+    # types reconstructable from its textual representation
+    nil,  # absent attribute
+    BoolType, DecimalType, StringType,  # literal values
+    # TODO validate deep content in a container are reconstructable from repr
+    PairType, TupleType, ListType, DictType,  # containers
+    ArgsPackType,  # complexer container
+  ]
+}
+
 class DataBack (persistSink) {
 
   _last_eid = 0  # last entity identifier
@@ -72,49 +83,48 @@ class DataBack (persistSink) {
   # to be installed to every `SuperBack` as (<-@) and (*<-@)
   method _setBoAttr (attrKey, attrVal) case type(attrVal) of {
 
-    {[
-      nil,  # clearing attribute value
-      BoolType, DecimalType, StringType,  # literal values
-      PairType, TupleType, ListType, DictType,  # containers
-      ArgsPackType,  # complexer container
-    ]} -> case type(that?$attrKey) of {
-      {[
-        nil,  # clearing attribute value
-        BoolType, DecimalType, StringType,  # literal values
-        PairType, TupleType, ListType, DictType,  # containers
-        ArgsPackType,  # complexer container
-      ]} -> {
-        # TODO validate deep content of containers are reconstructable from repr
+    hasReConRepr(attrVal) -> {
+      hasReConRepr(that?$attrKey) -> {
         db.persistSink <- (constructor(that), this.eid, [(attrKey, attrVal)])
 
         # update the business object's attribute value
         that$attrKey = attrVal
 
-        # TODO returning `continue` will let the other super(s) (if any present),
-        # or the default behavior (if this is the bottom super) set the attr, rendering
-        # the above assignment unnecessary
+        # TODO `continue` will let the other super(s) (if any present),
+        # or the default behavior (if this is the bottom super) set the attr,
+        # rendering the above assignment unnecessary
         continue  # pass control to other magical supers if any
       }
       error ('unexpected business object ' ++ this.eid ++ ' attr type change: '
           ++ type(that$attrKey) ++ ' to ' ++ type(attrVal))
+      continue  # no magic to impose
     }
 
     ObjectType -> case attrVal of {
-      {{ SuperBack: sbNewKin }} -> case that?$attrKey of {
-        {{ SuperBack: sbOldKin }} -> {
-          # TODO change of relationship
+      boOldKin = that?$attrKey
+      {{ SuperBack: sbNewKin }} -> {
+        case boOldKin of {
+          nil -> {
+            # TODO adding new relationship
 
-        }
-        nil -> {
-          # TODO adding new relationship
+          }
+          {{ SuperBack: sbOldKin }} -> {
+            # TODO change of relationship
 
+          }
+          error ('unexpected new business object replacing old object: '
+            ++ (boOldKin) ++ ' to ' ++ (attrVal))
         }
       }
       runtime.warn<| 'non-backed-object ' ++ attrVal 
-        ++ ' not supported as persistent attr'
+        ++ ' treated as transient attribute ' ++ attrKey
     }
 
     # leave as normal transient attribute
+    runtime.debug<| 'attribute of type ' ++ type(attrVal)
+      ++ ' treated as transient attribute ' ++ attrKey 
+      ++ ' for business object ' ++ this.eid
+      ++ ' of class defined at ' ++ this.boScope.lexiLoc()
     continue
   }
 
