@@ -13,7 +13,98 @@ method hasReConRepr (attrVal) {
 class DataBack (persistSink) {
 
   _last_eid = 0  # last entity identifier
-  _extent = {,}
+
+  method superBack () {
+    SuperBack(this, this._last_eid += 1)
+  }
+
+  # settle a new business object
+  # in a tx process all attributes atm
+  method _settle_obj( boEnt, sbEnt ) ai {
+    persistAttrs = []
+    for (attrKey, attrVal) from sbEnt.boScope.attrs() do case attrVal of {
+      # referencing another business object, settle the relationship
+      {{ SuperBack: sbRefEnt }} ->  {
+        this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
+
+        # encounter the new relationship
+        (attrKey, constructor(attrVal), sbRefEnt.eid) => persistAttrs
+      }
+
+      # handle trivially representable values, including `nil`
+      ;| hasReConRepr(attrVal) -> {
+        # encounter the new attribute value
+        (attrKey, attrVal) => persistAttrs
+      }
+
+      # not to persist, treating as a transient attribute
+      runtime.debug<| 'attribute of type ' ++ type(attrVal)
+        ++ ' treated as transient attribute ' ++ attrKey 
+        ++ ' for business object ' ++ sbEnt.eid
+        ++ ' of class defined at ' ++ sbEnt.boScope.lexiLoc()
+    }
+
+    # persist all attributes of the new business object
+    db.persistSink <- (constructor(boEnt), sbEnt.eid, persistAttrs)
+  }
+
+  # settle an attribute update
+  method _settle_attr( boEnt, sbEnt, attrKey, attrVal ) case attrVal of {
+    # referencing another business object, settle the relationship
+    {{ SuperBack: sbRefEnt }} ->  {
+      this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
+
+      # persist the new relationship
+      db.persistSink <- (constructor(boEnt), sbEnt.eid, [
+        (attrKey, constructor(attrVal), sbRefEnt.eid)
+      ])
+    }
+
+    # handle trivially representable values, including `nil`
+    ;| hasReConRepr(attrVal) -> {
+      # persist the new attribute value
+      db.persistSink <- (constructor(boEnt), sbEnt.eid, [
+        (attrKey, attrVal)
+      ])
+    }
+
+    # not to persist, treating as a transient attribute
+    runtime.debug<| 'attribute of type ' ++ type(attrVal)
+      ++ ' treated as transient attribute ' ++ attrKey 
+      ++ ' for business object ' ++ sbEnt.eid
+      ++ ' of class defined at ' ++ sbEnt.boScope.lexiLoc()
+  }
+
+  # settle a new relationship
+  method _settle_rel( boRel, sbRel, refAttr, boEnt, sbEnt ) {
+    # counted reverse reference key, a pair of <rel-class>:<ref-attr>
+    kinKey = constructor(boRel):refAttr
+
+    # in a tx update the reverse reference for this very relationship
+    ai case sbEnt.kins[kinKey] of {
+      nil -> sbEnt.kins[kinKey] = {
+        boRel: 1
+      }
+      { kinRCs } -> kinRCs[boRel] = case kinRCs[boRel] of {
+        nil -> 1
+        { rc } -> error('bug: dup reverse ref')
+      }
+    }
+  }
+
+  # cleanup an old relationship
+  method _cleanup_rel( boRel, sbRel, refAttr, boEntOld, sbEntOld ) {
+    # counted reverse reference key, a pair of <rel-class>:<ref-attr>
+    kinKey = constructor(boRel):refAttr
+
+    # update the reverse reference for this very relationship
+    kinRCs = sbEnt.kins[kinKey]
+    # the assignment has an implicit tx which is just enough
+    kinRCs[boRel] = case kinRCs[boRel] of {
+      1 -> nil  # assigning to nil just deletes the entry
+      { rc } -> error('bug: reverse ref lost')
+    }
+  }
 
   method restore (restoreSessions) {
     for (rsid, dataIntake, sessionDoneSig) from restoreSessions do {
@@ -92,117 +183,58 @@ class DataBack (persistSink) {
     }
   }
 
-  method superBack () {
-    SuperBack(this, this._last_eid += 1)
+}
+
+class SuperBack (db, eid) {
+
+  # reverse references from here, to referencers of `that` business object,
+  # keyed by a pair of <rel-class>:<ref-attr>
+  _kins = {,}
+
+  generator kins(refClass, refAttr) {
+    for (boRef, _) from this._kins[refClass:refAttr] do
+      yield boRef
   }
 
-  # put the databack instance into the lexical context of its methods as `db`
-  db = this
-
-  # to be installed to every `SuperBack` as (<-^)
-  method _armSuper (boScope) {
+  # handles `extends db.superBack()` from a business object's class proc
+  method (<-^) (boScope) {
     this?boScope &> error (
       'bug: more than 1 business objects per SuperBack instance'
     )
     this.boScope = boScope
 
-    # TODO process relationships
-
-    # persist new business object through `db.persistSink`
-    db.persistSink <- (constructor(that), this.eid, that)
-
-    # keep a reference to it by this.eid
-    db._extent[this.eid] = that
+    # settle new object
+    db._settle_obj( that, this )
   }
 
-  # to be installed to every `SuperBack` as (<-@) and (*<-@)
-  method _setBoAttr (attrKey, attrVal) {
+  # ( <-@) handles `this.xxx = yyy` from a business child (referred to by `that`)
+  # (*<-@) handles `obj.xxx = yyy` for `obj` being a business child (referred to by `that`)
+
+  method (*<-@) (attrKey, attrVal) {
     attrValOld = that?$attrKey
 
-    # disconnect old relationship as necessary
-    if attrValOld != attrVal then {
-      case attrValOld of {{ SuperBack: sbOldKin }} ->  {
-        case sbOldKin.kins[constructor(that)] of {
-          nil -> { runtime.fatal<| 'bug?' }
-          { kinCntrOld } -> ai case kinCntrOld[this.eid] of {
-            nil -> { runtime.fatal<| 'bug?' }
-            { rc: _that } -> kinCntrOld[this.eid] = if rc > 1
-              then (rc-1): that
-              else nil
-          }
-        }
-      }
-    }
+    # no value change, nop
+    attrValOld == attrVal -> { pass }
 
-    # handle trivially representable values, including `nil`
-    hasReConRepr(attrVal) -> {
-      # update the attribute value before persist the change
-      that?$attrKey = attrVal
+    # apply the attribute update
+    that?$attrKey = attrVal
 
-      # persist the new attribute value
-      db.persistSink <- (constructor(that), this.eid, [(attrKey, attrVal)])
-    }
+    # cleanup the old relationship
+    case attrValOld of {{ SuperBack: sbRefEntOld }} ->
+      db._cleanup_rel( that, this, attrKey, attrValOld, sbRefEntOld)
 
-    # handle object references
-    ObjectType == type(attrVal) -> case (boNewKin = attrVal) of {
-      {{ SuperBack: sbNewKin }} -> {
-        # establish new relationship
-        ai case sbNewKin.kins[constructor(that)] of {
-          nil -> {  # `that` is the first kin of its class to `boNewKin`
-            sbNewKin.kins[constructor(that)] = ( kinCntrNew = {
-              this.eid: (1: that)
-            } )
-          }
-          { kinCntrNew } -> {  # not the first kin of its class to `boNewKin`
-            case kinCntrNew[this.eid] of {
-              nil -> {
-                kinCntrNew[this.eid] = (1: that)
-              }
-              { rc: _that } -> {
-                kinCntrNew[this.eid] = (rc+1: that)
-              }
-            }
-          }
-        }
-
-        # persist the new relationship
-        db.persistSink <- (constructor(that), this.eid, [
-          (attrKey, constructor(boNewKin): sbNewKin.eid)]
-        )
-      }
-
-      runtime.warn<| 'non-backed-object ' ++ boNewKin 
-        ++ ' treated as transient attribute ' ++ attrKey 
-        ++ ' for business object ' ++ this.eid
-        ++ ' of class defined at ' ++ this.boScope.lexiLoc()
-      continue  # no magic to impose
-    }
-
-    # leave as normal transient attribute
-    runtime.debug<| 'attribute of type ' ++ type(attrVal)
-      ++ ' treated as transient attribute ' ++ attrKey 
-      ++ ' for business object ' ++ this.eid
-      ++ ' of class defined at ' ++ this.boScope.lexiLoc()
-    continue  # no magic to impose
+    # settle new attribute
+    db._settle_attr( that, this, attrKey, attrVal )
   }
-
-}
-
-class SuperBack (db, eid) {
-
-  # relationships by class
-  kins = {,}
-
-  # handles `extends db.superBack()` from a business object's class proc
-  (<-^) = db._armSuper
 
   # use same method impl. for (<-@) and (*<-@), treating internal/external attr
   # updates the same
+  (<-@) = (*<-@)
 
-  # handles `this.xxx = yyy` from a business child (referred to by `that`)
-  ( <-@) = db._setBoAttr
-  # handles `obj.xxx = yyy` for `obj` being a business child (referred to by `that`)
-  (*<-@) = db._setBoAttr
+  # TODO impl.
+  method delete() {
+    runtime.fatal<| 'deletion of backed business object not impl. yet'
+  }
 
 }
 
