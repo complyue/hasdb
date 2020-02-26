@@ -5,4 +5,8 @@
  # defined via Edh-Host-Interface from Haskell code
 #}
 
+# TODO mockups of procedures and other artifacts can be defined in
+#      this source file, to make IDEs and/or other tools happy
+
+# this can happen with a wrong interpreter
 runtime.fatal<| "module `db/ehi` should be installed by Haskell code before the Edh world runs!"

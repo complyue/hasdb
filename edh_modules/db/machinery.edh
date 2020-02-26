@@ -1,4 +1,7 @@
 
+# import the host module
+import (imload, exload, **_) 'db/ehi'
+
 method hasReConRepr (attrVal) {
  return type(attrVal) ?<= [
     # types reconstructable from its textual representation
