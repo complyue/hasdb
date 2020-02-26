@@ -24,16 +24,23 @@ executable hasdb
     main-is: Main.hs
     hs-source-dirs: src
     other-modules:
-        ChatWorld
+        Repl
+        DB.DataWorld
+        DB.Comm.MicroProto
+        DB.RT
     default-language: Haskell2010
     default-extensions: NoImplicitPrelude OverloadedStrings LambdaCase
                         BangPatterns TupleSections ScopedTypeVariables
     ghc-options: -Wall -threaded
     build-depends:
+        edh -any,
+        haskeline -any,
         ghc >=8.6.5,
         base >=4.12 && <5,
         stm >=2.5,
         edh -any,
+        hashable -any,
+        unordered-containers -any,
         containers -any,
         unix -any,
         clock -any,
