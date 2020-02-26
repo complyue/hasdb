@@ -109,7 +109,9 @@ class DataBack (persistSink) {
   method restore (restoreSessions) {
     for (rsid, dataIntake, sessionDoneSig) from restoreSessions do {
       go {
-        defer sessionDoneSig <- rsid  # signal session done on thread term
+        defer {  # signal session done on thread term
+          sessionDoneSig <- rsid
+        }
         for txChgs from dataIntake do {
           for txChg from txChgs do case txChg of {
             nil -> break  # end-of-session
@@ -140,7 +142,7 @@ class DataBack (persistSink) {
               }
 
               # update
-              case bocExtent[eid] of -> {
+              case bocExtent[eid] of {
                 nil -> runtime.error<| 'business object of class ' ++ boClass 
                   ++ ' lost, with eid ' ++ eid
                 { bo } -> case bo of {{ SuperBack: sb }} -> {
@@ -229,7 +231,7 @@ class SuperBack (db, eid) {
 
   # use same method impl. for (<-@) and (*<-@), treating internal/external attr
   # updates the same
-  (<-@) = (*<-@)
+  this.(<-@) = (*<-@)
 
   # TODO impl.
   method delete() {

@@ -1,0 +1,8 @@
+
+{#
+ # this is the stub stand in place of the module
+ # containing host procedures and other artifacts
+ # defined via Edh-Host-Interface from Haskell code
+#}
+
+runtime.fatal<| "module `db/ehi` should be installed by Haskell code before the Edh world runs!"

@@ -1,0 +1,8 @@
+
+# re-export module `db/ehi`. as it is a host module installed
+# by Haskell code, relative import won't work
+import * 'db/ehi'
+
+# re-export all other Edh modules as well
+
+import * './machinery'
