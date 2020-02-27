@@ -46,8 +46,7 @@ main = do
         , ("exload", exloadProc)
         ]
 
-      let moduEnt = objEntity modu
-      installEdhAttrs moduEnt dbArts
+      installEdhAttrs (objEntity modu) dbArts
 
     modu <- createEdhModule world "<interactive>"
     doLoop world modu
