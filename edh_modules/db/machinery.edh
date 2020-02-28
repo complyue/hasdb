@@ -1,15 +1,9 @@
 
 # import the host module
-import (imload, exload, **_) 'db/ehi'
+import(className, newBo, **_) 'db/ehi'
 
-method persistBoClassOf ( boEnt ) 
-  exload( constructor( boEnt ) )
-
-method restoreBoClass ( bocp )
-  imload( bocp )
-
-method hasReConRepr (attrVal) {
- return type(attrVal) ?<= [
+method hasReConRepr( attrVal ) {
+ return type( attrVal ) ?<= [
     # types reconstructable from its textual representation
     nil,  # absent attribute
     BoolType, DecimalType, StringType,  # literal values
@@ -19,7 +13,61 @@ method hasReConRepr (attrVal) {
   ]
 }
 
-class DataBack (outletSink) {
+method runDbApp(dataFileName, dbApp) {
+
+  producer serialPersist( outlet ) {
+    db = DataBack( outlet, dbApp )
+    db.init()
+  }
+
+  ## TODO use HBI packet format for serialization of file data
+
+  dataFileHandle = openFile( dataFileName )
+  defer closeFile( dataFileHandle )
+
+  for persistRecord from serialPersist() do case persistRecord of {
+
+    nil -> { break }  # db shutdown
+
+    { (boClassPersisted, entIdent, attrChgs) } -> {
+      payload = '\n' ++ persistRecord
+      writeFile( dataFileHandle, payload )
+    }
+
+    error( 'bug: unsupported persistent record pattern' )
+  }
+
+}
+
+class DataBackLifecycle {
+
+  method init() {
+    # note `that` reference won't invoke magics, just does vanilla
+    # attribute resolution and do the call against the result.
+    that.bootstrap()
+    that.run()
+    that.shutdown()
+  }
+
+  method bootstrap() pass
+  
+  method run() pass
+
+  method shutdown() {
+    that.outletSink <- nil
+  }
+
+}
+
+class DataBack {
+  extends( DataBackLifecycle() )
+
+  method __init__ (
+    outletSink as this.outletSink, 
+    dbApp,
+  ) {
+    extends( dbApp )
+  }
 
   # the last entity identifier allocated
   # todo use trivial natural numbers for now,
@@ -30,7 +78,7 @@ class DataBack (outletSink) {
   # class having a separate dict in `_extents`
   _extents = {,}
 
-  method superBack () {
+  method superBack() {
     SuperBack( this, this._last_eid+=1 )
   }
 
@@ -44,13 +92,13 @@ class DataBack (outletSink) {
         this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
 
         # encounter the new relationship
-        (attrKey, persistBoClassOf(attrVal), sbRefEnt.eid) => persistAttrs
+      (attrKey, persistBoClassOf(attrVal), sbRefEnt.eid) => persistAttrs
       }
 
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
         # encounter the new attribute value
-        (attrKey, attrVal) => persistAttrs
+      (attrKey, attrVal) => persistAttrs
       }
 
       # not to persist, treating as a transient attribute
@@ -71,7 +119,7 @@ class DataBack (outletSink) {
     }
 
     # persist all attributes of the new business object
-    db.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, persistAttrs)
+    this.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, persistAttrs)
   }
 
   # settle an attribute update
@@ -81,16 +129,16 @@ class DataBack (outletSink) {
       this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
 
       # persist the new relationship
-      db.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, [
-        (attrKey, persistBoClassOf(attrVal), sbRefEnt.eid)
+      this.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, [
+      (attrKey, persistBoClassOf(attrVal), sbRefEnt.eid)
       ])
     }
 
     # handle trivially representable values, including `nil`
     ;| hasReConRepr(attrVal) -> {
       # persist the new attribute value
-      db.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, [
-        (attrKey, attrVal)
+      this.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, [
+      (attrKey, attrVal)
       ])
     }
 
@@ -132,8 +180,8 @@ class DataBack (outletSink) {
     }
   }
 
-  method replayHistory ( intakeSink ) {
-    for persistRecord from intakeSink do case persistRecord {
+  method replayHistory( intakeSink ) {
+    for persistRecord from intakeSink do case persistRecord of {
       nil -> { break }  # end of recorded history
 
       { (boClassPersisted, entIdent, attrChgs) } -> {
@@ -206,14 +254,16 @@ class DataBack (outletSink) {
     }
 }
 
-class SuperBack (db, eid) {
+class SuperBack {
+
+  method __init__ (db as this.db, eid as this.eid) pass
 
   # reverse references from here, to referencers of `that` business object,
   # keyed by a pair of <rel-class>:<ref-attr>
   _kins = {,}
 
   generator kins(refClass, refAttr) {
-    for (boRef, _) from this._kins[refClass:refAttr] do
+    for (boRef, _) from this._kins[refClass:refAttr] |> {,} do
       yield boRef
   }
 
@@ -224,8 +274,11 @@ class SuperBack (db, eid) {
     )
     this.boScope = boScope
 
+    # replaying history
+    ;| nil == this?db -> { return }
+
     # settle new object
-    db._settle_obj( that, this )
+    this.db._settle_obj( that, this )
   }
 
   # ( <-@) handles `this.xxx = yyy` from a business child (referred to by `that`)
@@ -240,12 +293,15 @@ class SuperBack (db, eid) {
     # apply the attribute update
     that?$attrKey = attrVal
 
+    # replaying history
+    ;| nil == this?db -> { return }
+
     # cleanup the old relationship
     case attrValOld of {{ SuperBack: sbRefEntOld }} ->
-      db._cleanup_rel( that, this, attrKey, attrValOld, sbRefEntOld)
+      this.db._cleanup_rel( that, this, attrKey, attrValOld, sbRefEntOld)
 
     # settle new attribute
-    db._settle_attr( that, this, attrKey, attrVal )
+    this.db._settle_attr( that, this, attrKey, attrVal )
   }
 
   # use same method impl. for (<-@) and (*<-@), treating internal/external attr

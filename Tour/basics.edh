@@ -1,1 +1,49 @@
 
+{
+
+  class DbLib {
+
+    method __init__ (db as this.db) pass
+
+    class Entity01 {
+
+      method __init__ () {
+
+        # don't do the `extends` in the class procedure, that'll confuse 
+        # DataBack when instances are restored by history replay, in which
+        # case a `SuperBack` is added as super automatically.
+        extends db.superBack()
+      }
+
+    }
+
+  }
+
+  class DbApp {
+
+    class Entity11 {
+
+      method __init__ (name as this.name) {
+        this.value = 555
+
+        extends db.superBack()
+      }
+
+    }
+
+    method run() {
+      # `DataBack` instance will put `this` App as its first super,
+      # `run()` is called against the db instance, so `that` here is
+      # the actual `DataBack` instance.
+      this.db = that
+
+      # import some classes from a lib parameterized with the db instance.
+      import DbLib(that)
+      ## TODO have import statement imports into context `this` scope,
+      ##      instead of method procedure scope. module level imports
+      ##      should not be affected by this semantic change.
+    }
+  }
+  runDbApp( './persist-data.hasdb', DbApp() )
+
+}
