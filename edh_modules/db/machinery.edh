@@ -2,6 +2,12 @@
 # import the host module
 import (imload, exload, **_) 'db/ehi'
 
+method persistBoClassOf ( boEnt ) 
+  exload( constructor( boEnt ) )
+
+method restoreBoClass ( bocp )
+  imload( bocp )
+
 method hasReConRepr (attrVal) {
  return type(attrVal) ?<= [
     # types reconstructable from its textual representation
@@ -13,12 +19,19 @@ method hasReConRepr (attrVal) {
   ]
 }
 
-class DataBack (persistSink) {
+class DataBack (outletSink) {
 
-  _last_eid = 0  # last entity identifier
+  # the last entity identifier allocated
+  # todo use trivial natural numbers for now,
+  #      change to uuid for security reasons in production
+  _last_eid = 0
+
+  # reference all live business objects by eid, with each business 
+  # class having a separate dict in `_extents`
+  _extents = {,}
 
   method superBack () {
-    SuperBack(this, this._last_eid += 1)
+    SuperBack( this, this._last_eid+=1 )
   }
 
   # settle a new business object
@@ -31,7 +44,7 @@ class DataBack (persistSink) {
         this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
 
         # encounter the new relationship
-        (attrKey, constructor(attrVal), sbRefEnt.eid) => persistAttrs
+        (attrKey, persistBoClassOf(attrVal), sbRefEnt.eid) => persistAttrs
       }
 
       # handle trivially representable values, including `nil`
@@ -47,8 +60,18 @@ class DataBack (persistSink) {
         ++ ' of class defined at ' ++ sbEnt.boScope.lexiLoc()
     }
 
+    # put into global extent
+    ai case this._extents[constructor(boEnt)] of {
+      nil -> this._extents[constructor(boEnt)] = {
+        sbEnt.eid: boEnt
+      }
+      { boExtent } -> {
+        boExtent[sb.Ent.eid] = boEnt
+      }
+    }
+
     # persist all attributes of the new business object
-    db.persistSink <- (constructor(boEnt), sbEnt.eid, persistAttrs)
+    db.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, persistAttrs)
   }
 
   # settle an attribute update
@@ -58,15 +81,15 @@ class DataBack (persistSink) {
       this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
 
       # persist the new relationship
-      db.persistSink <- (constructor(boEnt), sbEnt.eid, [
-        (attrKey, constructor(attrVal), sbRefEnt.eid)
+      db.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, [
+        (attrKey, persistBoClassOf(attrVal), sbRefEnt.eid)
       ])
     }
 
     # handle trivially representable values, including `nil`
     ;| hasReConRepr(attrVal) -> {
       # persist the new attribute value
-      db.persistSink <- (constructor(boEnt), sbEnt.eid, [
+      db.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, [
         (attrKey, attrVal)
       ])
     }
@@ -109,85 +132,78 @@ class DataBack (persistSink) {
     }
   }
 
-  method restore (restoreSessions) {
-    for (rsid, dataIntake, sessionDoneSig) from restoreSessions do {
-      go {
-        defer {  # signal session done on thread term
-          sessionDoneSig <- rsid
-        }
-        for txChgs from dataIntake do {
-          for txChg from txChgs do case txChg of {
-            nil -> break  # end-of-session
-            { (boClass, eid, attrChgs) } -> case attrChgs of {
-              ai case this._extent[boClass] of {
-                nil -> this._extent[boClass] = ( bocExtent = {,} )
-                { bocExtent } -> { pass }
-              }
+  method replayHistory ( intakeSink ) {
+    for persistRecord from intakeSink do case persistRecord {
+      nil -> { break }  # end of recorded history
 
-              # delete
-              nil -> {
-                # TODO disconnect all relationships
+      { (boClassPersisted, entIdent, attrChgs) } -> {
+        boClass = restoreBoClass( boClassPersisted )
 
-                # unref the business object from db
-                bocExtent[eid] = nil
-              }
+        # adapt to historical largest eid
+        ai if entIdent > this._last_eid then
+          this._last_eid = entIdent
 
-              ai if eid > this._last_eid then this._last_eid = eid
-
-              # creation
-              {{ SuperBack: sb }} -> {
-                sb.eid != eid -> error 'bo eid from data intake mismatch, ' ++ sb.eid
-                  ++ ' vs ' ++ eid
-                # TODO connect all relationships
-
-                # ref the business object from db
-                bocExtent[eid] = attrChgs
-              }
-
-              # update
-              case bocExtent[eid] of {
-                nil -> runtime.error<| 'business object of class ' ++ boClass 
-                  ++ ' lost, with eid ' ++ eid
-                { bo } -> case bo of {{ SuperBack: sb }} -> {
-                  for (attrKey, attrVal) from attrChgs do case attrVal of {
-                    attrValOld = bo?$attrKey
-                    # TODO disconnect old relationship as necessary
-
-                    # TODO putAttr yet to be impl.
-                    {( refClass: refEid )} -> {
-                      # todo more friendly error msg if class/eid not found
-                      boTarget = this._extent[refClass][refEid]
-                      case boTarget of {{ SuperBack: sbTarget }} -> {
-                        # connect the relationship
-                        ai case sbTarget.kins[constructor(bo)] of {
-                          nil -> {
-                            sbTarget.kins[constructor(bo)] = {
-                              sb.eid: (1: bo)
-                            }
-                          }
-                          { kinCntr } -> {
-                            kinCntr[sb.eid] = case kinCntr[sb.eid] of {
-                              nil -> (1: bo)
-                              {( rc: _bo )} -> (rc+1: bo)
-                            }
-                          }
-                        }
-                        # ref from the bo
-                        sb.boScope.putAttr (attrKey, boTarget)
-                      }
-                    }
-                    sb.boScope.putAttr (attrKey, attrVal)
-                  }
-                }
-              }
-
-            }
+        ai case this._extents[boClass] of -> {
+          nil -> {
+            this._extents[boClass] = (bocExtent = {,})
+            boEnt = nil
+          }
+          { bocExtent } -> {
+            boEnt = bocExtent[entIdent]
           }
         }
-      }
-    }
-  }
 
+        case boEnt of {
+          nil -> {
+
+            ## TODO non-standard init of bo
+            sbEnt = SuperBack( this, entIdent )
+            boEnt = recons(boClass) extends sbEnt
+
+            bocExtent[entIdent] = boEnt
+          }
+          {{ SuperBack: sbEnt }} -> {
+            pass
+          }
+          error( 'bug: no SuperBack on existing bo' )
+        }
+
+        for attrChg from attrChgs do case attrChg of {
+
+          # delete
+          nil -> {
+
+            # disconnect all relationships
+            xxx
+
+            # unref this bo from global extent
+            bocExtent[entIdent] = nil
+          }
+
+          # change of trivial attribute
+          {( attrKey, attrVal )} -> {
+
+            # update attr without magic
+            sbEnt.boScope.put(attrKey, attrVal)
+
+          }
+
+          # change of relationship
+          {( attrKey, refClassPersisted, refEntIdent )} -> {
+
+            # todo disconnect old relationship
+
+            # update relationship without magic
+            sbEnt.boScope.put(attrKey, xxx)
+
+          }
+
+          error( 'bug: unsupported persistent attr chg pattern' )
+        }
+      }
+
+      error( 'bug: unsupported persistent record pattern' )
+    }
 }
 
 class SuperBack (db, eid) {
