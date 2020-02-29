@@ -232,7 +232,7 @@ class DataBack {
           {( attrKey, attrVal )} -> {
 
             # update attr without magic
-            sbEnt.boScope.put(attrKey, attrVal)
+            sbEnt.boScope.put(attrKey: attrVal)
 
           }
 
@@ -242,7 +242,7 @@ class DataBack {
             # todo disconnect old relationship
 
             # update relationship without magic
-            sbEnt.boScope.put(attrKey, xxx)
+            sbEnt.boScope.put(attrKey: xxx)
 
           }
 

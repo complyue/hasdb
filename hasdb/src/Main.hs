@@ -41,9 +41,9 @@ main = do
     void $ installEdhModule world "db/ehi" $ \modu -> do
       dbArts <- mapM
         (\(nm, hp) -> (AttrByName nm, ) <$> mkHostProc EdhHostProc nm hp)
-        [ -- exload/imload only work for top level Edh procedures by far
-          ("imload", imloadProc)
-        , ("exload", exloadProc)
+        [ -- here's the list of host procedures exposed by HasDB interpreter
+          ("className", classNameProc)
+        , ("newBo"    , newBoProc)
         ]
 
       installEdhAttrs (objEntity modu) dbArts
