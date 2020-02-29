@@ -48,6 +48,6 @@ main = do
 
       installEdhAttrs (objEntity modu) dbArts
 
-    modu <- createEdhModule world "<interactive>"
+    modu <- createEdhModule world "<interactive>" "<adhoc>"
     doLoop world modu
 
