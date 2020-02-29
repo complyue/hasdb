@@ -39,9 +39,6 @@
 
       # import some classes from a lib parameterized with the db instance.
       import DbLib(that)
-      ## TODO have import statement imports into context `this` scope,
-      ##      instead of method procedure scope. module level imports
-      ##      should not be affected by this semantic change.
     }
   }
   runDbApp( './persist-data.hasdb', DbApp() )

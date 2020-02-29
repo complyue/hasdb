@@ -86,7 +86,7 @@ class DataBack {
   # in a tx process all attributes atm
   method _settle_obj( boEnt, sbEnt ) ai {
     persistAttrs = []
-    for (attrKey, attrVal) from sbEnt.boScope.attrs() do case attrVal of {
+    for (attrKey, attrVal) from sbEnt._boScope.attrs() do case attrVal of {
       # referencing another business object, settle the relationship
       {{ SuperBack: sbRefEnt }} ->  {
         this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
@@ -105,7 +105,7 @@ class DataBack {
       runtime.debug<| 'attribute of type ' ++ type(attrVal)
         ++ ' treated as transient attribute ' ++ attrKey 
         ++ ' for business object ' ++ sbEnt.eid
-        ++ ' of class defined at ' ++ sbEnt.boScope.lexiLoc()
+        ++ ' of class defined at ' ++ sbEnt._boScope.lexiLoc()
     }
 
     # put into global extent
@@ -146,7 +146,7 @@ class DataBack {
     runtime.debug<| 'attribute of type ' ++ type(attrVal)
       ++ ' treated as transient attribute ' ++ attrKey 
       ++ ' for business object ' ++ sbEnt.eid
-      ++ ' of class defined at ' ++ sbEnt.boScope.lexiLoc()
+      ++ ' of class defined at ' ++ sbEnt._boScope.lexiLoc()
   }
 
   # settle a new relationship
@@ -232,7 +232,7 @@ class DataBack {
           {( attrKey, attrVal )} -> {
 
             # update attr without magic
-            sbEnt.boScope.put(attrKey: attrVal)
+            sbEnt._boScope.put(attrKey: attrVal)
 
           }
 
@@ -242,7 +242,7 @@ class DataBack {
             # todo disconnect old relationship
 
             # update relationship without magic
-            sbEnt.boScope.put(attrKey: xxx)
+            sbEnt._boScope.put(attrKey: xxx)
 
           }
 
@@ -269,10 +269,10 @@ class SuperBack {
 
   # handles `extends db.superBack()` from a business object's class proc
   method (<-^) (boScope) {
-    this?boScope &> error (
+    this?_boScope &> error (
       'bug: more than 1 business objects per SuperBack instance'
     )
-    this.boScope = boScope
+    this._boScope = boScope
 
     # replaying history
     ;| nil == this?db -> { return }
