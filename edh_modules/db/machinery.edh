@@ -29,7 +29,7 @@ method runDbApp(dataFileName, dbApp) {
 
     nil -> { break }  # db shutdown
 
-    { (boClassPersisted, entIdent, attrChgs) } -> {
+    { (boClassName, eid, attrChgs) } -> {
       payload = '\n' ++ persistRecord
       writeFile( dataFileHandle, payload )
     }
@@ -92,7 +92,7 @@ class DataBack {
         this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
 
         # encounter the new relationship
-      (attrKey, persistBoClassOf(attrVal), sbRefEnt.eid) => persistAttrs
+        (attrKey, className(attrVal), sbRefEnt.eid) => persistAttrs
       }
 
       # handle trivially representable values, including `nil`
@@ -119,7 +119,7 @@ class DataBack {
     }
 
     # persist all attributes of the new business object
-    this.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, persistAttrs)
+    this.outletSink <- (className(boEnt), sbEnt.eid, persistAttrs)
   }
 
   # settle an attribute update
@@ -129,16 +129,16 @@ class DataBack {
       this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
 
       # persist the new relationship
-      this.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, [
-      (attrKey, persistBoClassOf(attrVal), sbRefEnt.eid)
+      this.outletSink <- (className(boEnt), sbEnt.eid, [
+      (attrKey, className(attrVal), sbRefEnt.eid)
       ])
     }
 
     # handle trivially representable values, including `nil`
     ;| hasReConRepr(attrVal) -> {
       # persist the new attribute value
-      this.outletSink <- (persistBoClassOf(boEnt), sbEnt.eid, [
-      (attrKey, attrVal)
+      this.outletSink <- (className(boEnt), sbEnt.eid, [
+        (attrKey, attrVal)
       ])
     }
 
@@ -184,12 +184,17 @@ class DataBack {
     for persistRecord from intakeSink do case persistRecord of {
       nil -> { break }  # end of recorded history
 
-      { (boClassPersisted, entIdent, attrChgs) } -> {
-        boClass = restoreBoClass( boClassPersisted )
+      { (boClassName, eid, attrChgs) } -> {
+        # db has the mounted DbApp as a super, resolving business classes
+        # by name from there
+        boClass = super?$boClassName
+        if ClassType != type(boClass) then error (
+          'Business class ' ++ boClassName ++ ' not available!'
+        )
 
         # adapt to historical largest eid
-        ai if entIdent > this._last_eid then
-          this._last_eid = entIdent
+        ai if eid > this._last_eid then
+          this._last_eid = eid
 
         ai case this._extents[boClass] of -> {
           nil -> {
@@ -197,18 +202,18 @@ class DataBack {
             boEnt = nil
           }
           { bocExtent } -> {
-            boEnt = bocExtent[entIdent]
+            boEnt = bocExtent[eid]
           }
         }
 
         case boEnt of {
           nil -> {
 
-            ## TODO non-standard init of bo
-            sbEnt = SuperBack( this, entIdent )
-            boEnt = recons(boClass) extends sbEnt
+            # non-standard construction of the business object
+            sbEnt = SuperBack( this, eid )
+            boEnt = newBo( boClass, sbEnt )
 
-            bocExtent[entIdent] = boEnt
+            bocExtent[eid] = boEnt
           }
           {{ SuperBack: sbEnt }} -> {
             pass
@@ -225,7 +230,7 @@ class DataBack {
             xxx
 
             # unref this bo from global extent
-            bocExtent[entIdent] = nil
+            bocExtent[eid] = nil
           }
 
           # change of trivial attribute
@@ -237,7 +242,7 @@ class DataBack {
           }
 
           # change of relationship
-          {( attrKey, refClassPersisted, refEntIdent )} -> {
+          {( attrKey, refClassName, refEntIdent )} -> {
 
             # todo disconnect old relationship
 
