@@ -1,7 +1,12 @@
 
 # import the host module
-import(className, newBo, **_) 'db/ehi'
+import(
+  className, newBo, backToFile,
+  **_
+) 'db/ehi'
 
+
+# this tells persistent attributes from transient ones
 method hasReConRepr( attrVal ) {
  return type( attrVal ) ?<= [
     # types reconstructable from its textual representation
@@ -15,32 +20,21 @@ method hasReConRepr( attrVal ) {
 
 method runDbApp(dataFileName, dbApp) {
 
-  producer serialPersist( outlet ) {
+  # the producer procedure to be launched for db app
+  producer launchApp( outlet ) {
     db = DataBack( outlet, dbApp )
     db.init()
   }
 
-  ## TODO use HBI packet format for serialization of file data
-
-  dataFileHandle = openFile( dataFileName )
-  defer closeFile( dataFileHandle )
-
-  for persistRecord from serialPersist() do case persistRecord of {
-
-    nil -> { break }  # db shutdown
-
-    { (boClassName, eid, attrChgs) } -> {
-      payload = '\n' ++ persistRecord
-      writeFile( dataFileHandle, payload )
-    }
-
-    error( 'bug: unsupported persistent record pattern' )
-  }
+  # serialize the stream of sunk Edh values to the specified data file
+  backToFile ( launchApp(), dataFileName )
 
 }
 
 class DataBackLifecycle {
 
+  # this is the entry point of a db app, the concrete app can selectively
+  # implement some of the methods invoked here.
   method init() {
     # note `that` reference won't invoke magics, just does vanilla
     # attribute resolution and do the call against the result.
@@ -49,12 +43,15 @@ class DataBackLifecycle {
     that.shutdown()
   }
 
+  # provide default impl. of the lifecycle methods so the db app does not
+  # have to impl. all of them.
+
   method bootstrap() pass
   
   method run() pass
 
   method shutdown() {
-    that.outletSink <- nil
+    that.persistOutlet <- nil
   }
 
 }
@@ -63,15 +60,15 @@ class DataBack {
   extends( DataBackLifecycle() )
 
   method __init__ (
-    outletSink as this.outletSink, 
+    persistOutlet as this.persistOutlet, 
     dbApp,
   ) {
     extends( dbApp )
   }
 
   # the last entity identifier allocated
-  # todo use trivial natural numbers for now,
-  #      change to uuid for security reasons in production
+  # todo change to uuid for security reasons in production, instead of the
+  #      trivial natural numbers as for now
   _last_eid = 0
 
   # reference all live business objects by eid, with each business 
@@ -119,7 +116,7 @@ class DataBack {
     }
 
     # persist all attributes of the new business object
-    this.outletSink <- (className(boEnt), sbEnt.eid, persistAttrs)
+    this.persistOutlet <- (className(boEnt), sbEnt.eid, persistAttrs)
   }
 
   # settle an attribute update
@@ -129,7 +126,7 @@ class DataBack {
       this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
 
       # persist the new relationship
-      this.outletSink <- (className(boEnt), sbEnt.eid, [
+      this.persistOutlet <- (className(boEnt), sbEnt.eid, [
       (attrKey, className(attrVal), sbRefEnt.eid)
       ])
     }
@@ -137,7 +134,7 @@ class DataBack {
     # handle trivially representable values, including `nil`
     ;| hasReConRepr(attrVal) -> {
       # persist the new attribute value
-      this.outletSink <- (className(boEnt), sbEnt.eid, [
+      this.persistOutlet <- (className(boEnt), sbEnt.eid, [
         (attrKey, attrVal)
       ])
     }
@@ -196,7 +193,7 @@ class DataBack {
         ai if eid > this._last_eid then
           this._last_eid = eid
 
-        ai case this._extents[boClass] of -> {
+        ai case this._extents[boClass] of {
           nil -> {
             this._extents[boClass] = (bocExtent = {,})
             boEnt = nil
@@ -257,6 +254,7 @@ class DataBack {
 
       error( 'bug: unsupported persistent record pattern' )
     }
+  }
 }
 
 class SuperBack {
@@ -280,7 +278,7 @@ class SuperBack {
     this._boScope = boScope
 
     # replaying history
-    ;| nil == this?db -> { return }
+    ;| nil == this?db -> { return nil }
 
     # settle new object
     this.db._settle_obj( that, this )
@@ -296,10 +294,10 @@ class SuperBack {
     attrValOld == attrVal -> { pass }
 
     # apply the attribute update
-    that?$attrKey = attrVal
+    that$attrKey = attrVal
 
     # replaying history
-    ;| nil == this?db -> { return }
+    ;| nil == this?db -> { return nil }
 
     # cleanup the old relationship
     case attrValOld of {{ SuperBack: sbRefEntOld }} ->

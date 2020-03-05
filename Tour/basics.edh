@@ -1,4 +1,7 @@
 
+import * 'db'
+
+
 {
 
   class DbLib {
@@ -11,13 +14,18 @@
 
         # don't do the `extends` in the class procedure, that'll confuse 
         # DataBack when instances are restored by history replay, in which
-        # case a `SuperBack` is added as super automatically.
+        # case a `SuperBack` is added as a super, automatically.
         extends db.superBack()
       }
 
     }
 
   }
+
+}
+
+
+{
 
   class DbApp {
 
@@ -36,11 +44,19 @@
       # `run()` is called against the db instance, so `that` here is
       # the actual `DataBack` instance.
       this.db = that
+      # import some classes from a lib parameterized with current db instance.
+      import * DbLib(that)
 
-      # import some classes from a lib parameterized with the db instance.
-      import DbLib(that)
+      e01 = Entity01()
+      e01.name = 'Compl'
+      e01.age = 41
+
+      e11 = Entity11('Yue')
+      e11.key = 'hahah'
+
     }
   }
-  runDbApp( './persist-data.hasdb', DbApp() )
 
 }
+
+runDbApp( './persist-data.hasdb', DbApp() )

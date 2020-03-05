@@ -38,12 +38,14 @@ main = do
     world <- createEdhWorld logger
     installEdhBatteries world
 
+    -- install the host module
     void $ installEdhModule world "db/ehi" $ \modu -> do
       dbArts <- mapM
         (\(nm, hp) -> (AttrByName nm, ) <$> mkHostProc EdhHostProc nm hp)
         [ -- here's the list of host procedures exposed by HasDB interpreter
-          ("className", classNameProc)
-        , ("newBo"    , newBoProc)
+          ("className" , classNameProc)
+        , ("newBo"     , newBoProc)
+        , ("backToFile", backToFileProc)
         ]
 
       installEdhAttrs (objEntity modu) dbArts
