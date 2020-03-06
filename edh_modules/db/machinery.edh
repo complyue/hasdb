@@ -40,15 +40,13 @@ class DataBackLifecycle {
     # note `that` reference won't invoke magics, just does vanilla
     # attribute resolution and do the call against the result.
 
-    producer restoreData( outlet ) {
-      # restoreFromFile( outlet, dataFileName )
-      outlet <- nil
-    }
-
     # a db app needs this chance to prepare itself for history replay
     that.bootstrap()
 
-    # that._replayHistory( restoreData() )
+    producer restoreData( outlet ) {
+      restoreFromFile( outlet, dataFileName )
+    }
+    that._replayHistory( restoreData() )
 
     that._dumpRebase()
     # TODO consider sync the backing data file at this point
@@ -211,6 +209,10 @@ class DataBack {
   method _replayHistory( intakeSink ) {
     for persistRecord from intakeSink do case persistRecord of {
       nil -> { break }  # end of recorded history
+
+      ;| StringType == type(persistRecord) -> {
+        30<| 'got Edh source to restore:\n ** ' ++ persistRecord
+      }
 
       { (boClassName, eid, attrChgs) } -> {
         # db has the mounted DbApp as a super, resolving business classes

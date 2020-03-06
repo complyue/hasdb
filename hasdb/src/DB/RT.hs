@@ -19,6 +19,7 @@ import           Data.Time.Clock
 import           Data.Time.Format
 import qualified Data.HashMap.Strict           as Map
 import qualified Data.ByteString               as B
+import qualified Data.ByteString.Char8         as C
 import           Data.Text
 import qualified Data.Text                     as T
 import           Data.Text.Encoding
@@ -89,26 +90,87 @@ backupToFileProc !argsSender !exit =
 
 -- | utility restoreFromFile(persistOutlet, dataFileName)
 restoreFromFileProc :: EdhProcedure
-restoreFromFileProc !argsSender !exit = undefined
+restoreFromFileProc !argsSender !exit =
+  packHostProcArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
+    [EdhSink !restoreOutlet, EdhString !dataFileName] | Map.null kwargs ->
+      -- not to use `unsafeIOToSTM` here, despite it being retry prone,
+      -- nested `atomically` is prohibited as well.
+      edhWaitIO exit $ do
+        restoreEdhReprStreamFromFile restoreOutlet $ T.unpack dataFileName
+        return nil
+    _ -> throwEdh EvalError "Invalid arg to `backupToFile`"
 
 
 restoreEdhReprStreamFromFile :: EventSink -> FilePath -> IO ()
 restoreEdhReprStreamFromFile !sink !dataFilePath =
-  withBinaryFile dataFilePath ReadMode $ \fileHndl -> do
-    let pumpEvd = do
-          atomically $ publishEvent sink nil
-          -- loop again
-          pumpEvd
-    pumpEvd
+  catchIOError goRestore $ \ioe -> if isDoesNotExistError ioe
+    then atomically $ publishEvent sink nil
+    else throwIO ioe
+ where
+  goRestore = withBinaryFile dataFilePath ReadMode $ \fileHndl -> do
+    parsePackets fileHndl $ \dir pkt -> case dir of
+      "" -> do
+        let !evs = decodeUtf8 pkt
+        -- parse & eval evs to Edh value, then post to sink 
+        atomically $ publishEvent sink $ EdhString evs
+      _ -> throwIO $ userError $ "invalid packet directive: " <> T.unpack dir
+    atomically $ publishEvent sink nil
+
+
+parsePackets :: Handle -> (Text -> B.ByteString -> IO ()) -> IO ()
+parsePackets !fileHndl !pktSink = parsePkts B.empty
+ where
+  parsePkts :: B.ByteString -> IO ()
+  parsePkts !readahead = do
+    (payloadLen, directive, readahead') <- parsePktHdr readahead
+    if payloadLen < 0
+      then return ()
+      else do
+        let (payload, rest) = B.splitAt payloadLen readahead'
+            more2read       = payloadLen - B.length payload
+        if more2read > 0
+          then do
+            morePayload <- B.hGet fileHndl more2read
+            pktSink directive (payload <> morePayload)
+            parsePkts B.empty
+          else do
+            pktSink directive payload
+            parsePkts rest
+
+  maxHEADER = 60 :: Int
+
+  parsePktHdr :: B.ByteString -> IO (Int, Text, B.ByteString)
+  parsePktHdr !readahead = do
+    peeked <- if B.null readahead
+      then B.hGetSome fileHndl maxHEADER
+      else return readahead
+    if B.null peeked
+      then return (-1, "eof", B.empty)
+      else do
+        unless ("[" `B.isPrefixOf` peeked) $ throwIO $ userError
+          "no packet header as expected"
+        let (hdrPart, rest) = C.break (== ']') peeked
+        if not $ B.null rest
+          then do -- got a full packet header
+            let !hdrContent         = B.drop 1 hdrPart
+                !readahead'         = B.drop 1 rest
+                (lenStr, directive) = C.break (== '#') hdrContent
+                payloadLen          = read $ T.unpack $ decodeUtf8 lenStr
+            return (payloadLen, decodeUtf8 $ B.drop 1 directive, readahead')
+          else if B.length peeked < maxHEADER
+            then do
+              morePeek <- B.hGetSome fileHndl maxHEADER
+              parsePktHdr $ readahead <> morePeek
+            else throwIO $ userError "packet header too long"
 
 
 backupEdhReprStreamToFile :: EventSink -> FilePath -> IO ()
 backupEdhReprStreamToFile !sink !dataFilePath = do
-  (subChan, _)    <- atomically $ subscribeEvents sink
-  !dfBaselineTime <- dataFileTimeStamp
+  (subChan, _)       <- atomically $ subscribeEvents sink
+  !dfLaunchTimeStamp <- dataFileTimeStamp
   bracket
       (openBackingFile
-        (dataDir </> "wip-" <> dataFile <> "~" <> dfBaselineTime)
+        (dataDir </> "wip-" <> dataFile <> "~" <> dfLaunchTimeStamp)
         1
       )
       (closeFd . snd)
@@ -133,15 +195,15 @@ backupEdhReprStreamToFile !sink !dataFilePath = do
               pumpEvd
         pumpEvd
         void $ handleToFd fileHndl -- need its side-effect of flushing the write buf
-        !dfObsoleteTimeStamp <- dataFileTimeStamp
+        !dfShutdownTimeStamp <- dataFileTimeStamp
         obsoleteBackingFile
           (   dataDir
           </> "old-"
           <>  dataFile
           <>  "~"
-          <>  dfObsoleteTimeStamp
+          <>  dfShutdownTimeStamp
           <>  "-"
-          <>  dfBaselineTime
+          <>  dfLaunchTimeStamp
           )
           1
         renameFile wipPath dataFilePath
