@@ -71,9 +71,9 @@ backToFileProc :: EdhProcedure
 backToFileProc !argsSender !exit = do
   !pgs <- ask
   packHostProcArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
-    [EdhSink !persistOutlet, EdhString dataFileName] | Map.null kwargs ->
+    [EdhSink !persistOutlet, EdhString !dataFileName] | Map.null kwargs ->
       contEdhSTM $ do
-        shutdownSig <- newEmptyTMVar
+        !shutdownSig <- newEmptyTMVar
         unsafeIOToSTM
           -- can not `atomically` during `unsafeIOToSTM`, fork a thread to do that
           $ void
