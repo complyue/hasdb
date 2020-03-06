@@ -99,10 +99,12 @@ class DataBack {
       }
 
       # not to persist, treating as a transient attribute
+      {#
       runtime.debug<| 'attribute of type ' ++ type(attrVal)
         ++ ' treated as transient attribute ' ++ attrKey 
         ++ ' for business object ' ++ sbEnt.eid
         ++ ' of class defined at ' ++ sbEnt._boScope.lexiLoc()
+      #}
     }
 
     # put into global extent
@@ -140,10 +142,12 @@ class DataBack {
     }
 
     # not to persist, treating as a transient attribute
+    {#
     runtime.debug<| 'attribute of type ' ++ type(attrVal)
       ++ ' treated as transient attribute ' ++ attrKey 
       ++ ' for business object ' ++ sbEnt.eid
       ++ ' of class defined at ' ++ sbEnt._boScope.lexiLoc()
+    #}
   }
 
   # settle a new relationship
