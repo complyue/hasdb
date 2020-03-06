@@ -39,13 +39,23 @@ import * 'db'
 
     }
 
-    method run() {
+    # this method is called before existing back data from the disk file is
+    # restored by replaying history, machinery necessary for history replay
+    # needs to be setup by this method.
+    method bootstrap() {
       # `DataBack` instance will put `this` App as its first super,
       # `run()` is called against the db instance, so `that` here is
       # the actual `DataBack` instance.
       this.db = that
+
       # import some classes from a lib parameterized with current db instance.
       import * DbLib(that)
+    }
+
+    # this is the *main* method of the application, all transactional changes
+    # are backed to disk file during the course of this method running.
+    # once this method returns, the db is shutdown.
+    method run() {
 
       e01 = Entity01()
       e01.name = 'Compl'
@@ -59,4 +69,4 @@ import * 'db'
 
 }
 
-runDbApp( './persist-data.hasdb', DbApp() )
+runDbApp( 'data/persist-data.hasdb', DbApp() )

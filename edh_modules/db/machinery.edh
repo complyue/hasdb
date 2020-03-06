@@ -1,7 +1,8 @@
 
 # import the host module
-import(
-  className, newBo, backToFile,
+import (
+  className, newBo, 
+  backupToFile, restoreFromFile, 
   **_
 ) 'db/ehi'
 
@@ -23,23 +24,40 @@ method runDbApp(dataFileName, dbApp) {
   # the producer procedure to be launched for db app
   producer launchApp( outlet ) {
     db = DataBack( outlet, dbApp )
-    db.init()
+    db.init( dataFileName )
   }
 
   # serialize the stream of sunk Edh values to the specified data file
-  backToFile ( launchApp(), dataFileName )
+  backupToFile ( launchApp(), dataFileName )
 
 }
 
 class DataBackLifecycle {
 
   # this is the entry point of a db app, the concrete app can selectively
-  # implement some of the methods invoked here.
-  method init() {
+  # override some of the methods invoked here.
+  method init( dataFileName ) {
     # note `that` reference won't invoke magics, just does vanilla
     # attribute resolution and do the call against the result.
+
+    producer restoreData( outlet ) {
+      # restoreFromFile( outlet, dataFileName )
+      outlet <- nil
+    }
+
+    # a db app needs this chance to prepare itself for history replay
     that.bootstrap()
+
+    # that._replayHistory( restoreData() )
+
+    that._dumpRebase()
+    # TODO consider sync the backing data file at this point
+
+    # TODO take this chance to physically discard older data files as a 
+    #      means of automatic compacting of backing storage.
+
     that.run()
+
     that.shutdown()
   }
 
@@ -181,7 +199,16 @@ class DataBack {
     }
   }
 
-  method replayHistory( intakeSink ) {
+  # dump all live business objects to persistent outlet, this makes sure
+  # all live objects are retained by the new back storeage, and without
+  # deleted objects from last db run.
+  method _dumpRebase() {
+    # TODO impl.
+  }
+
+  # restore all business objects into RAM from the backing storage wrt
+  # last complete db run against the designated backing file.
+  method _replayHistory( intakeSink ) {
     for persistRecord from intakeSink do case persistRecord of {
       nil -> { break }  # end of recorded history
 
@@ -209,7 +236,6 @@ class DataBack {
 
         case boEnt of {
           nil -> {
-
             # non-standard construction of the business object
             sbEnt = SuperBack( this, eid )
             boEnt = newBo( boClass, sbEnt )
@@ -228,7 +254,7 @@ class DataBack {
           nil -> {
 
             # disconnect all relationships
-            xxx
+            # TODO xxx
 
             # unref this bo from global extent
             bocExtent[eid] = nil
@@ -245,10 +271,11 @@ class DataBack {
           # change of relationship
           {( attrKey, refClassName, refEntIdent )} -> {
 
-            # todo disconnect old relationship
+            # TODO disconnect old relationship
 
             # update relationship without magic
-            sbEnt._boScope.put(attrKey: xxx)
+            # TODO xxx
+            # sbEnt._boScope.put(attrKey: xxx)
 
           }
 
@@ -259,6 +286,7 @@ class DataBack {
       error( 'bug: unsupported persistent record pattern' )
     }
   }
+
 }
 
 class SuperBack {

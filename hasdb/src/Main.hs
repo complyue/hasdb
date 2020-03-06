@@ -43,9 +43,10 @@ main = do
       dbArts <- mapM
         (\(nm, hp) -> (AttrByName nm, ) <$> mkHostProc EdhHostProc nm hp)
         [ -- here's the list of host procedures exposed by HasDB interpreter
-          ("className" , classNameProc)
-        , ("newBo"     , newBoProc)
-        , ("backToFile", backToFileProc)
+          ("className"      , classNameProc)
+        , ("newBo"          , newBoProc)
+        , ("backupToFile"   , backupToFileProc)
+        , ("restoreFromFile", restoreFromFileProc)
         ]
 
       installEdhAttrs (objEntity modu) dbArts

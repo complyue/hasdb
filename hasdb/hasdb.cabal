@@ -47,6 +47,7 @@ executable hasdb
         unordered-containers -any,
         containers -any,
         unix -any,
+        time -any,
         clock -any,
         network -any,
         websockets -any,
