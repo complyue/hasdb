@@ -38,13 +38,14 @@ dataFileTimeStamp =
   formatTime defaultTimeLocale "%Y%m%dT%H%M%S" <$> getCurrentTime
 
 
-streamEdhReprFromDisk :: EventSink -> Fd -> IO ()
-streamEdhReprFromDisk !restoreOutlet !dfd = if dfd < 0
+streamEdhReprFromDisk :: Context -> EventSink -> Fd -> IO ()
+streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
   then -- okay to be absent
        -- signal end of stream
        atomically $ publishEvent restoreOutlet nil
   else restoreLatest
  where
+  world         = contextWorld ctx
   restoreLatest = bracket (fdToHandle dfd) handleToFd $ \fileHndl -> do
     -- seems that closing an Fd will fail hard after `fdToHandle` but before
     -- `handleToFd`. may be an undocumented side-effect ?
@@ -52,9 +53,13 @@ streamEdhReprFromDisk !restoreOutlet !dfd = if dfd < 0
     parsePackets fileHndl $ \dir payload -> case dir of
       "" -> do
         let !evs = decodeUtf8 payload
-        -- TODO parse & eval evs to Edh value, then post to restoreOutlet 
-        atomically $ publishEvent restoreOutlet $ EdhString evs
-        return False
+        -- parse & eval evs to Edh value, then post to restoreOutlet 
+        parseEdhSource world "<edf>" evs >>= \case
+          Left  err   -> throwIO err
+          Right stmts -> do
+            runEdhProgram' ctx $ evalBlock stmts $ \(OriginalValue evd _ _) ->
+              contEdhSTM $ publishEvent restoreOutlet evd
+            return False
       _ -> throwIO $ userError $ "invalid packet directive: " <> T.unpack dir
     atomically $ publishEvent restoreOutlet nil -- signal end of stream
 

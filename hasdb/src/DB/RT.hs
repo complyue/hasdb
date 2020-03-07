@@ -82,13 +82,14 @@ streamToDiskProc !argsSender !exit =
 
 -- | utility streamFromDisk(restoreOutlet, dataFileFolder)
 streamFromDiskProc :: EdhProcedure
-streamFromDiskProc !argsSender !exit =
+streamFromDiskProc !argsSender !exit = do
+  pgs <- ask
   packHostProcArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
     [EdhSink !restoreOutlet, EdhDecimal baseDFD] | Map.null kwargs ->
       -- not to use `unsafeIOToSTM` here, despite it being retry prone,
       -- nested `atomically` is prohibited as well.
       edhWaitIO exit $ do
-        streamEdhReprFromDisk restoreOutlet
+        streamEdhReprFromDisk (edh'context pgs) restoreOutlet
           $ fromIntegral
           $ castDecimalToInteger baseDFD
         return nil

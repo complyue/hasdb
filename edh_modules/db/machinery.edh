@@ -61,7 +61,7 @@ class DataBackLifecycle {
     }
     that._replayHistory( restoreData() )
 
-    that._dumpRebase()
+    that._dumpBaseData()
 
     # TODO take this chance to physically discard older files in the data 
     #      folder, as a means of automatic compacting of backing storage.
@@ -119,13 +119,11 @@ class DataBack {
         # encounter the new relationship
         (attrKey, className(attrVal), sbRefEnt.eid) => persistAttrs
       }
-
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
         # encounter the new attribute value
-      (attrKey, attrVal) => persistAttrs
+        (attrKey, attrVal) => persistAttrs
       }
-
       # not to persist, treating as a transient attribute
       {#
       runtime.debug<| 'attribute of type ' ++ type(attrVal)
@@ -141,7 +139,7 @@ class DataBack {
         sbEnt.eid: boEnt
       }
       { boExtent } -> {
-        boExtent[sb.Ent.eid] = boEnt
+        boExtent[sbEnt.eid] = boEnt
       }
     }
 
@@ -210,10 +208,35 @@ class DataBack {
   }
 
   # dump all live business objects to persistent outlet, this makes sure
-  # all live objects are retained by the new back storeage, and without
-  # deleted objects from last db run.
-  method _dumpRebase() {
-    # TODO impl.
+  # all live objects are retained by the new data file as back storeage,
+  # and without deleted objects from last db run.
+  method _dumpBaseData() {
+    for (boc, boExtent) from this._extents do {
+      boClass = className(boc)
+      for (eid, boEnt) from boExtent do case boEnt of {{ SuperBack: sbEnt }} -> {
+        persistAttrs = []
+        for (attrKey, attrVal) from sbEnt._boScope.attrs() do case attrVal of {
+          # referencing another business object
+          {{ SuperBack: sbRefEnt }} ->  {
+            (attrKey, className(attrVal), sbRefEnt.eid) => persistAttrs
+          }
+          # handle trivially representable values, including `nil`
+          ;| hasReConRepr(attrVal) -> {
+            # encounter the new attribute value
+            (attrKey, attrVal) => persistAttrs
+          }
+          # not to persist, treating as a transient attribute
+          {#
+          runtime.debug<| 'attribute of type ' ++ type(attrVal)
+            ++ ' treated as transient attribute ' ++ attrKey 
+            ++ ' for business object ' ++ sbEnt.eid
+            ++ ' of class defined at ' ++ sbEnt._boScope.lexiLoc()
+          #}
+        }
+        # persist all attributes of this business object
+        this.persistOutlet <- (boClass, eid, persistAttrs)
+      }
+    }
   }
 
   # restore all business objects into RAM from the backing storage wrt
@@ -221,10 +244,6 @@ class DataBack {
   method _replayHistory( intakeSink ) {
     for persistRecord from intakeSink do case persistRecord of {
       nil -> { break }  # end of recorded history
-
-      ;| StringType == type(persistRecord) -> {
-        30<| 'got Edh source to restore:\n ** ' ++ persistRecord
-      }
 
       { (boClassName, eid, attrChgs) } -> {
         # db has the mounted DbApp as a super, resolving business classes
