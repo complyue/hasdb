@@ -69,4 +69,4 @@ import * 'db'
 
 }
 
-runDbApp( 'data/persist-data.hasdb', DbApp() )
+runDbApp( 'data', DbApp() )

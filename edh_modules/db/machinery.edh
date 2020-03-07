@@ -2,7 +2,7 @@
 # import the host module
 import (
   className, newBo, 
-  backupToFile, restoreFromFile, 
+  streamToDisk, streamFromDisk, 
   **_
 ) 'db/ehi'
 
@@ -19,16 +19,29 @@ method hasReConRepr( attrVal ) {
   ]
 }
 
-method runDbApp(dataFileName, dbApp) {
+method runDbApp(dataFileFolder, dbApp) {
+
+  # the persister will post the fd it opened as the latest data file
+  # to this sink, it'll hold this fd open until it finalized a new data
+  # file at the time the db is shutdown. the fd is passed to `db.init()`
+  # so business objects from that file can be restored into RAM before
+  # the db app is run.
+  sinkBaseDFD = sink
 
   # the producer procedure to be launched for db app
   producer launchApp( outlet ) {
     db = DataBack( outlet, dbApp )
-    db.init( dataFileName )
+
+    # read the most recent value from the sink, it must have been there already,
+    # as `streamToDisk()` won't subscribe to the persist outlet (only after 
+    # which this producer proc will run) until it resolved the latest data file.
+    for baseDFD from sinkBaseDFD do { break }
+
+    db.init( baseDFD )
   }
 
-  # serialize the stream of sunk Edh values to the specified data file
-  backupToFile ( launchApp(), dataFileName )
+  # serialize the stream of sunk Edh values to the specified data folder
+  streamToDisk ( launchApp(), dataFileFolder, sinkBaseDFD )
 
 }
 
@@ -36,7 +49,7 @@ class DataBackLifecycle {
 
   # this is the entry point of a db app, the concrete app can selectively
   # override some of the methods invoked here.
-  method init( dataFileName ) {
+  method init( baseDFD ) {
     # note `that` reference won't invoke magics, just does vanilla
     # attribute resolution and do the call against the result.
 
@@ -44,15 +57,14 @@ class DataBackLifecycle {
     that.bootstrap()
 
     producer restoreData( outlet ) {
-      restoreFromFile( outlet, dataFileName )
+      streamFromDisk( outlet, baseDFD )
     }
     that._replayHistory( restoreData() )
 
     that._dumpRebase()
-    # TODO consider sync the backing data file at this point
 
-    # TODO take this chance to physically discard older data files as a 
-    #      means of automatic compacting of backing storage.
+    # TODO take this chance to physically discard older files in the data 
+    #      folder, as a means of automatic compacting of backing storage.
 
     that.run()
 
