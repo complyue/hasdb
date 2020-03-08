@@ -1,9 +1,4 @@
 
 # re-export submodules
 
-# 'db/ehi' is a host module installed by Haskell code,
-# relative import can only import Edh source modules
-# from local filesystem, absolute import needed here.
-import * 'db/ehi'
-
 import * './machinery'

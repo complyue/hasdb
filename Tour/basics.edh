@@ -15,9 +15,12 @@ import * 'db'
     # requires an effective `DataBack` instance for each instance of this lib
     method __init__ (db as this.db) pass
 
-    class Entity01 {
+    class Person {
 
-      method __init__ () {
+      method __init__(
+        name as this.name, 
+        age as this.age, 
+      ) {
 
         # don't do the `extends` in the class procedure, that'll confuse 
         # DataBack when instances are restored by history replay, in which
@@ -53,14 +56,39 @@ import * 'db'
     #      the new instance. so as `extends db.superBack()` carries the
     #      persistent-object-creation semantic, it should be written in 
     #      the `__init__()` method instead of in the class procedure.
-    class Entity11 {
+    class Depart {
 
-      method __init__ (name as this.name) {
-        this.value = 555
+      method __init__(
+        name as this.name,
+      ) {
+        this.headcount = 30
 
+        # this actually creates this business object in persistence respect
         extends db.superBack()
+
+        # create a kindex for persons working for this dept, sorted by salary
+        super.createKindex(
+# target attr name, will be available as super attr
+          'workers',
+# business class as the relationship
+          WorkFor,
+# attr name on the relationship bo whose value is a reference to this bo
+          'depart',
+# key attrs, descending sort by salary
+          ( 'salary': false, ),
+        )
       }
 
+    }
+
+    class WorkFor {
+      method __init__(
+        person as this.person,
+        depart as this.depart,
+        salary as this.salary,
+      ) {
+        extends db.superBack()
+      }
     }
 
     # this method is called before existing back data from the disk file is
@@ -74,6 +102,10 @@ import * 'db'
 
       # import some classes from a lib parameterized with current db instance.
       import * DbLib(that)
+
+      this.deptByName = db.createIndex( Depart, (
+        'name': false,  # use a pair to indicate sorting order
+       ) )
     }
 
     # this is the *main* method of the application, all transactional changes
@@ -81,12 +113,20 @@ import * 'db'
     # once this method returns, the db is shutdown.
     method run() {
 
-      e01 = Entity01()
-      e01.name = 'Compl'
-      e01.age = 41
+      case this.deptByName[ 'Dev' ] of {
+        nil -> {
+          d01 = Depart('Dev')
 
-      e11 = Entity11('Yue')
-      e11.key = 'hahah'
+          p01 = Person( name = 'Compl', age = 41 )
+          p02 = Person( name = 'Jim', age = 11 )
+
+          WorkFor( p01, d01, 12345 )
+          WorkFor( p02, d01, 54321 )
+        }
+        { d01 } -> { pass }
+      }
+
+      runtime.info <| 'got devs: ' ++ d01.workers
 
     }
   }

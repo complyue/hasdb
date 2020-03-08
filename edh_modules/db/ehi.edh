@@ -1,12 +1,16 @@
 
 {#
- # this is the stub stand in place of the module
- # containing host procedures and other artifacts
- # defined via Edh-Host-Interface from Haskell code
+ # this is the stub stand in place of the host module installed
+ # by Haskell code that contains host procedures and other artifacts
+ # defined via Edh-Host-Interface with Haskell code.
 #}
 
-# TODO mockups of procedures and other artifacts can be defined in
-#      this source file, to make IDEs and/or other tools happy
+# TODO mockups of procedures and other artifacts can be written in
+#      this source file, to give meaningful information to IDEs and/or
+#      other tools, for purpose of, e.g. auto completion.
 
-# this can happen with a wrong interpreter
-runtime.fatal<| "module `db/ehi` should be installed by Haskell code before the Edh world runs!"
+# this Edh source file should never be imported, unless relevant code is
+# run with a wrong Edh interpreter that does not install such a host module.
+runtime.fatal<| 
+  "module `db/ehi` should be installed by Haskell code " ++
+  "before the Edh world runs!"

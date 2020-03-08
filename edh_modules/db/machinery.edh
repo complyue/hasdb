@@ -1,10 +1,15 @@
 
-# import the host module
 import (
+
   className, newBo, 
   streamToDisk, streamFromDisk, 
-  **_
-) 'db/ehi'
+  BoIndex,
+
+  **_  # consume (drop) extra artifacts exported there, don't fail
+) # 'db/ehi' is a host module installed by Haskell code,
+  # relative import can only import Edh source modules
+  # from local filesystem, absolute import needed here.
+ 'db/ehi'
 
 
 # this tells persistent attributes from transient ones
@@ -92,6 +97,33 @@ class DataBack {
     extends( dbApp )
   }
 
+  # all global indices created. a hierarchy of dicts by class then by key attr,
+  # to a list of index entries for indices having the key attr involved.
+  _indices = {,}
+
+  # this method is called by assignment (to an attribute of the db app)
+  # in normal cases, so it tends to run within a tx anyway, we mark it
+  # with `ai` for extra certain.
+  method createIndex( boClass, keyAttrs ) ai {
+    bocIndices = this._indices[boClass] |> (
+      this._indices[boClass] = {,}
+    )
+    idx = BoIndex( keyAttrs )
+    for keyAttr from keyAttrs do {
+      keyAttrName = case keyAttr of {
+        { attr: sortingOrder } -> attr
+        keyAttr
+      }
+      if StringType != type(keyAttrName) then
+        error( 'Invalid key attribute: ' ++ keyAttr )
+      idx => (
+        bocIndices[ keyAttrName ] |> (
+          bocIndices[ keyAttrName ] = []
+      )
+    )
+    return idx
+  }
+
   # the last entity identifier allocated
   # todo change to uuid for security reasons in production, instead of the
   #      trivial natural numbers as for now
@@ -101,8 +133,11 @@ class DataBack {
   # class having a separate dict in `_extents`
   _extents = {,}
 
-  method superBack() {
-    SuperBack( this, this._last_eid+=1 )
+  method superBack( **kwargs ) {
+    SuperBack( 
+      db=this, eid=this._last_eid+=1, 
+      **kwargs,
+    )
   }
 
   # settle a new business object
@@ -183,8 +218,8 @@ class DataBack {
     #
     # an ai tx is used to protect against racing in adding a first `kinRCs`
     # dict for a new `kinKey` to overwrite eachother.
-    ai case sbEnt.kins[kinKey] of {
-      nil -> sbEnt.kins[kinKey] = {
+    ai case sbEnt._kins[kinKey] of {
+      nil -> sbEnt._kins[kinKey] = {
         boRel: 1
       }
       { kinRCs } -> kinRCs[boRel] = case kinRCs[boRel] of {
@@ -200,7 +235,7 @@ class DataBack {
     kinKey = constructor(boRel):refAttr
 
     # update the reverse reference for this very relationship
-    kinRCs = sbEnt.kins[kinKey]
+    kinRCs = sbEnt._kins[kinKey]
     # the assignment has an implicit tx which is just enough
     kinRCs[boRel] = case kinRCs[boRel] of {
       1 -> nil  # assigning to nil just deletes the entry
@@ -213,8 +248,8 @@ class DataBack {
   # objects atm to be recorded by the current backing data file, especially
   # without objects had been alive but deleted during replay of history.
   method _dumpBaseData() {
-    for (boc, boExtent) from this._extents do {
-      boClass = className(boc)
+    for (boClass, boExtent) from this._extents do {
+      boClassName = className(boClass)
       for (eid, boEnt) from boExtent do case boEnt of {{ SuperBack: sbEnt }} -> {
         persistAttrs = []
         for (attrKey, attrVal) from sbEnt._boScope.attrs() do case attrVal of {
@@ -236,7 +271,7 @@ class DataBack {
           #}
         }
         # persist all attributes of this business object
-        this.persistOutlet <- (boClass, eid, persistAttrs)
+        this.persistOutlet <- (boClassName, eid, persistAttrs)
       }
     }
   }
@@ -271,17 +306,23 @@ class DataBack {
 
         case boEnt of {
           nil -> {
-            # non-standard construction of the business object
+            # this bo not created yet, do non-standard construction of the
+            # business object
             sbEnt = SuperBack( this, eid )
             boEnt = newBo( boClass, sbEnt )
 
             bocExtent[eid] = boEnt
           }
           {{ SuperBack: sbEnt }} -> {
+            # already created, fallthrough to apply attr updates
             pass
           }
           error( 'bug: no SuperBack on existing bo' )
         }
+
+        # TODO perform index update accordingly, maybe differently handled
+        #      when its a new object or not; aggregate attr updates to avoid
+        #      unnecessary index updates probably.
 
         for attrChg from attrChgs do case attrChg of {
 
@@ -326,15 +367,28 @@ class DataBack {
 
 class SuperBack {
 
-  method __init__ (db as this.db, eid as this.eid) pass
-
-  # reverse references from here, to referencers of `that` business object,
-  # keyed by a pair of <rel-class>:<ref-attr>
+  method __init__ (
+    db as this.db, eid as this.eid,
+  ) pass
+  
+  # informed reverse references, to referencers of `that` business object,
+  # keyed by a pair of <rel-class>:<ref-attr>, then by the key attrs.
   _kins = {,}
 
-  generator kins(refClass, refAttr) {
-    for (boRef, _) from this._kins[refClass:refAttr] |> {,} do
-      yield boRef
+  method createKindex ( magicAttrName, relClass, relAttr, keyAttrs ) {
+    idx = BoIndex( keyAttrs )
+    this._kins[ relClass:relAttr ] = idx
+    # will be available from `that` as super attr
+    this$magicAttrName = idx
+  }
+
+  method (@<-) ( attrKey ) case that?$attrKey of {
+    nil -> {
+      # TODO provide magic attribute as can from here
+
+      continue  # no such (magic) attr from this super
+    }
+    { attrVal } -> attrVal
   }
 
   # handles `extends db.superBack()` from a business object's class proc
