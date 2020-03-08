@@ -4,8 +4,15 @@ import * 'db'
 
 {
 
+  # a class in Edh can serve as a parameteric *module*, with nested classes,
+  # methods and/or other procedures, those to be `import`ed into another app/lib
+  # instance's scope.
   class DbLib {
 
+    # an `__init__()` method if defined manifests the arguments to construct
+    # instances of the enclosing class (procedure)
+    #
+    # requires an effective `DataBack` instance for each instance of this lib
     method __init__ (db as this.db) pass
 
     class Entity01 {
@@ -29,6 +36,23 @@ import * 'db'
 
   class DbApp {
 
+    # the effective `DataBack` instance for this app.
+    #
+    # will be assigned during `bootstrap()` method, which is called from the
+    # effective `DataBack` instance, after this app instance is passed to
+    # `runDbApp()`
+    db = nil
+
+    # a business object class, should `extends db.superBack()` from its 
+    # `__init__()` method, for the business object instances of it to be
+    # persisted by the effective `DataBack`.
+    #
+    # NOTE during history replay, when persistent objects are restored from
+    #      the backing storage, the `__init__()` method will NOT be called
+    #      as in normal cases after the class procedure is called against
+    #      the new instance. so as `extends db.superBack()` carries the
+    #      persistent-object-creation semantic, it should be written in 
+    #      the `__init__()` method instead of in the class procedure.
     class Entity11 {
 
       method __init__ (name as this.name) {
