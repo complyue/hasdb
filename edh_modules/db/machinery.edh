@@ -153,7 +153,7 @@ class DataBack {
 
       # persist the new relationship
       this.persistOutlet <- (className(boEnt), sbEnt.eid, [
-      (attrKey, className(attrVal), sbRefEnt.eid)
+        (attrKey, className(attrVal), sbRefEnt.eid)
       ])
     }
 
@@ -179,7 +179,10 @@ class DataBack {
     # counted reverse reference key, a pair of <rel-class>:<ref-attr>
     kinKey = constructor(boRel):refAttr
 
-    # in a tx update the reverse reference for this very relationship
+    # update the reverse reference for this very relationship
+    #
+    # an ai tx is used to protect against racing in adding a first `kinRCs`
+    # dict for a new `kinKey` to overwrite eachother.
     ai case sbEnt.kins[kinKey] of {
       nil -> sbEnt.kins[kinKey] = {
         boRel: 1
@@ -201,13 +204,14 @@ class DataBack {
     # the assignment has an implicit tx which is just enough
     kinRCs[boRel] = case kinRCs[boRel] of {
       1 -> nil  # assigning to nil just deletes the entry
-      { rc } -> error('bug: reverse ref lost')
+      { nil } -> error('bug: reverse ref lost')
+      { rc } -> error('bug: unexpected rc=' ++ rc)
     }
   }
 
-  # dump all live business objects to persistent outlet, this makes sure
-  # all live objects are retained by the new data file as back storeage,
-  # and without deleted objects from last db run.
+  # dump all live business objects to persistent outlet, this has all live
+  # objects atm to be recorded by the current backing data file, especially
+  # without objects had been alive but deleted during replay of history.
   method _dumpBaseData() {
     for (boc, boExtent) from this._extents do {
       boClass = className(boc)
@@ -237,13 +241,13 @@ class DataBack {
     }
   }
 
-  # restore all business objects into RAM from the backing storage wrt
-  # last complete db run against the designated backing file.
+  # restore all business objects into RAM from the backing storage, i.e
+  # lastest finalized data file. all persistent CUD operations are replayed.
   method _replayHistory( intakeSink ) {
     for persistRecord from intakeSink do case persistRecord of {
       nil -> { break }  # end of recorded history
 
-      { (boClassName, eid, attrChgs) } -> {
+      {( boClassName, eid, attrChgs )} -> {
         # db has the mounted DbApp as a super, resolving business classes
         # by name from there
         boClass = super?$boClassName
@@ -340,9 +344,6 @@ class SuperBack {
     )
     this._boScope = boScope
 
-    # replaying history
-    ;| nil == this?db -> { return nil }
-
     # settle new object
     this.db._settle_obj( that, this )
   }
@@ -358,9 +359,6 @@ class SuperBack {
 
     # apply the attribute update
     that$attrKey = attrVal
-
-    # replaying history
-    ;| nil == this?db -> { return nil }
 
     # cleanup the old relationship
     case attrValOld of {{ SuperBack: sbRefEntOld }} ->
