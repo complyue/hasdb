@@ -35,9 +35,7 @@ method runDbApp(dataFileFolder, dbApp) {
     # read the most recent value from the sink, it must have been there already,
     # as `streamToDisk()` won't subscribe to the persist outlet (only after 
     # which this producer proc will run) until it resolved the latest data file.
-    for baseDFD from sinkBaseDFD do { break }
-
-    db.init( baseDFD )
+    db.init( mrv( sinkBaseDFD ) )
   }
 
   # serialize the stream of sunk Edh values to the specified data folder
