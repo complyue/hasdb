@@ -375,11 +375,11 @@ class SuperBack {
   # keyed by a pair of <rel-class>:<ref-attr>, then by the key attrs.
   _kins = {,}
 
-  method createKindex ( magicAttrName, relClass, relAttr, keyAttrs ) {
+  method createKindex ( kinAttr, relClass, relAttr, keyAttrs ) {
     idx = BoIndex( keyAttrs )
     this._kins[ relClass:relAttr ] = idx
     # will be available from `that` as super attr
-    this$magicAttrName = idx
+    this$kinAttr = idx
   }
 
   method (@<-) ( attrKey ) case that?$attrKey of {
