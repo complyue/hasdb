@@ -44,20 +44,22 @@ classNameProc !argsSender !exit = do
   classNameOf _ = nil
 
 
--- | utility newBo(boClass, sbEnt)
+-- | utility newBo(boClass, sbObj)
 newBoProc :: EdhProcedure
 newBoProc !argsSender !exit =
   packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
-    [EdhClass !cls, EdhObject !sbEnt] | Map.null kwargs ->
+    [EdhClass !cls, EdhObject !sbObj] | Map.null kwargs ->
       createEdhObject cls [] $ \(OriginalValue boVal _ _) -> case boVal of
         EdhObject !bo -> do
           pgs <- ask
           let world = contextWorld $ edh'context pgs
           contEdhSTM $ do
             boScope <- mkScopeWrapper world $ objectScope bo
-            modifyTVar' (objSupers bo) (sbEnt :)
-            modifyTVar' (entity'store $ objEntity sbEnt) $ \es ->
-              changeEntityAttr es (AttrByName "_boScope") $ EdhObject boScope
+            modifyTVar' (objSupers bo) (sbObj :)
+            let sbEnt = objEntity sbObj
+            modifyTVar' (entity'store sbEnt)
+              $ changeEntityAttr (entity'man sbEnt) (AttrByName "_boScope")
+              $ EdhObject boScope
             exitEdhSTM pgs exit $ EdhObject bo
         _ -> error "bug: createEdhObject returned non-object"
     _ -> throwEdh EvalError "Invalid arg to `newBo`"
