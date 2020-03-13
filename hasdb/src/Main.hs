@@ -41,15 +41,39 @@ main = do
     -- install the host module
     void $ installEdhModule world "db/ehi" $ \modu -> do
 
-      dbArts <- mapM
-        (\(nm, hp) -> (AttrByName nm, ) <$> mkHostProc EdhHostProc nm hp)
-        [ -- here's the list of host procedures exposed by HasDB interpreter
-          ("className"     , classNameProc)
-        , ("newBo"         , newBoProc)
-        , ("streamToDisk"  , streamToDiskProc)
-        , ("streamFromDisk", streamFromDiskProc)
-        ]
+      let moduScope = objectScope modu
 
+      !dbArts <- sequence
+        [ (AttrByName nm, ) <$> mkHostProc moduScope mc nm hp args
+        | (mc, nm, hp, args) <-
+          [ (EdhMethod, "className", classNameProc, WildReceiver)
+          , ( EdhMethod
+            , "newBo"
+            , newBoProc
+            , PackReceiver
+              [ RecvArg "boClass" Nothing Nothing
+              , RecvArg "sbEnt"   Nothing Nothing
+              ]
+            )
+          , ( EdhMethod
+            , "streamToDisk"
+            , streamToDiskProc
+            , PackReceiver
+              [ RecvArg "persistOutlet"  Nothing Nothing
+              , RecvArg "dataFileFolder" Nothing Nothing
+              , RecvArg "sinkBaseDFD"    Nothing Nothing
+              ]
+            )
+          , ( EdhMethod
+            , "streamFromDisk"
+            , streamFromDiskProc
+            , PackReceiver
+              [ RecvArg "restoreOutlet" Nothing Nothing
+              , RecvArg "baseDFD"       Nothing Nothing
+              ]
+            )
+          ]
+        ]
       installEdhAttrs (objEntity modu) dbArts
 
     modu <- createEdhModule world "<interactive>" "<adhoc>"

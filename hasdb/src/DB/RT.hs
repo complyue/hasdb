@@ -25,7 +25,7 @@ classNameProc !argsSender !exit = do
   !pgs <- ask
   let callerCtx   = edh'context pgs
       callerScope = contextScope callerCtx
-  packHostProcArgs argsSender $ \(ArgsPack !args !kwargs) ->
+  packEdhArgs argsSender $ \(ArgsPack !args !kwargs) ->
     let !argsCls = classNameOf <$> args
     in  if Map.null kwargs
           then case argsCls of
@@ -38,7 +38,7 @@ classNameProc !argsSender !exit = do
             (EdhArgsPack $ ArgsPack argsCls $ Map.map classNameOf kwargs)
  where
   classNameOf :: EdhValue -> EdhValue
-  classNameOf (EdhClass (ProcDefi _ (ProcDecl _ !cn _ _))) = EdhString cn
+  classNameOf (EdhClass (ProcDefi _ _ (ProcDecl !cn _ _))) = EdhString cn
   classNameOf (EdhObject !obj) =
     EdhString $ procedure'name $ procedure'decl $ objClass obj
   classNameOf _ = nil
@@ -47,31 +47,30 @@ classNameProc !argsSender !exit = do
 -- | utility newBo(boClass, sbEnt)
 newBoProc :: EdhProcedure
 newBoProc !argsSender !exit =
-  packHostProcArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
+  packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
     [EdhClass !cls, EdhObject !sbEnt] | Map.null kwargs ->
-      createEdhObject cls $ \(OriginalValue boVal _ _) -> case boVal of
+      createEdhObject cls [] $ \(OriginalValue boVal _ _) -> case boVal of
         EdhObject !bo -> do
           pgs <- ask
           let world = contextWorld $ edh'context pgs
           contEdhSTM $ do
             boScope <- mkScopeWrapper world $ objectScope bo
             modifyTVar' (objSupers bo) (sbEnt :)
-            modifyTVar' (entity'store $ objEntity sbEnt)
-              $ Map.insert (AttrByName "_boScope")
-              $ EdhObject boScope
+            modifyTVar' (entity'store $ objEntity sbEnt) $ \es ->
+              changeEntityAttr es (AttrByName "_boScope") $ EdhObject boScope
             exitEdhSTM pgs exit $ EdhObject bo
         _ -> error "bug: createEdhObject returned non-object"
     _ -> throwEdh EvalError "Invalid arg to `newBo`"
 
 
--- | utility streamToDisk(persistOutlet, dataFileFolder)
+-- | utility streamToDisk(persistOutlet, dataFileFolder, sinkBaseDFD)
 --
 -- this should be called from the main Edh thread, block it here until
 -- db shutdown, or other Edh threads will be terminated, including
 -- the one running the db app.
 streamToDiskProc :: EdhProcedure
 streamToDiskProc !argsSender !exit =
-  packHostProcArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
+  packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
     [EdhSink !persistOutlet, EdhString !dataFileFolder, EdhSink !sinkBaseDFD]
       | Map.null kwargs -> edhWaitIO exit $ do
         -- not to use `unsafeIOToSTM` here, despite it being retry prone,
@@ -80,11 +79,11 @@ streamToDiskProc !argsSender !exit =
         return nil
     _ -> throwEdh EvalError "Invalid arg to `streamToDisk`"
 
--- | utility streamFromDisk(restoreOutlet, dataFileFolder)
+-- | utility streamFromDisk(restoreOutlet, baseDFD)
 streamFromDiskProc :: EdhProcedure
 streamFromDiskProc !argsSender !exit = do
   pgs <- ask
-  packHostProcArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
+  packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
     [EdhSink !restoreOutlet, EdhDecimal baseDFD] | Map.null kwargs ->
       -- not to use `unsafeIOToSTM` here, despite it being retry prone,
       -- nested `atomically` is prohibited as well.
