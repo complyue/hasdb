@@ -49,6 +49,14 @@ instance Show IndexSpec where
     showspec ((attr, asc) : rest@(_ : _)) =
       show attr <> ordind asc <> showspec rest
 
+parseIndexSpec :: EdhProgState -> [EdhValue] -> STM IndexSpec
+parseIndexSpec !pgs !args = case args of
+  [EdhExpr _ !idxSpecExpr _] -> return $ IndexSpec []
+  _ ->
+    throwEdhSTM pgs EvalError $ "Unsupported Index Specification: " <> T.pack
+      (show args)
+
+
 -- note the order of data constructors here decides how it's sorted,
 -- wrt value type difference
 data IdxKeyVal =

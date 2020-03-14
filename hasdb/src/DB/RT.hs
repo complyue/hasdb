@@ -11,6 +11,7 @@ import           Control.Monad.Reader
 import           Control.Concurrent.STM
 
 import qualified Data.HashMap.Strict           as Map
+import           Data.Map.Strict               as TreeMap
 import qualified Data.Text                     as T
 import           Data.Dynamic
 
@@ -97,25 +98,6 @@ streamFromDiskProc !argsSender !exit = do
     _ -> throwEdh EvalError "Invalid arg to `streamFromDisk`"
 
 
-boiReindexProc :: EdhProcedure
-boiReindexProc !argsSndr !exit = packEdhArgs argsSndr $ \case
-  (ArgsPack [EdhObject !bo] !kwargs) | Map.null kwargs -> do
-    pgs <- ask
-    let this = thisObject $ contextScope $ edh'context pgs
-        es   = entity'store $ objEntity this
-    contEdhSTM $ fromDynamic <$> readTVar es >>= \case
-      Nothing               -> error "bug: this is not a boi"
-      Just (boi :: BoIndex) -> do
-        boi' <- case boi of
-          UniqueIndex idx -> -- unique index
-            UniqueIndex <$> reindexUniqBusObj pgs bo idx
-          NonUniqueIndex idx -> -- non-unique index
-            NonUniqueIndex <$> reindexNouBusObj pgs bo idx
-        writeTVar es $ toDyn boi'
-        exitEdhSTM pgs exit $ EdhObject this
-  _ -> throwEdh EvalError "Invalid args to boiReindexProc"
-
-
 -- | host constructor BoIndex( indexSpec, unique=false )
 boiHostCtor
   :: Scope       -- constructor scope
@@ -136,7 +118,7 @@ boiHostCtor !scope _ obs = do
       , ("<-", boiReindexProc, PackReceiver [RecvArg "bo" Nothing Nothing])
       , ("[]", boiLookupProc , PackReceiver [RecvRestPosArgs "keyValues"])
       , ( "groups"
-        , boiRangeProc
+        , boiGroupsProc
         , PackReceiver
           [ RecvArg "start" Nothing (Just (GodSendExpr edhNone))
           , RecvArg "until" Nothing (Just (GodSendExpr edhNone))
@@ -156,9 +138,10 @@ boiHostCtor !scope _ obs = do
  where
 
   __init__ :: EdhProcedure
-  __init__ !argsSndr !exit = packEdhArgs argsSndr $ \case
-    (ArgsPack [EdhExpr _ !idxSpecExpr _] !kwargs) -> do
+  __init__ !argsSndr !exit =
+    packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) -> do
       pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
       contEdhSTM $ do
         uniqIdx <- case Map.lookup "unique" kwargs of
           Nothing          -> return False
@@ -167,16 +150,42 @@ boiHostCtor !scope _ obs = do
             throwEdhSTM pgs EvalError
               $  "Invalid unique arg value type: "
               <> T.pack (show $ edhTypeOf v)
-        exitEdhSTM pgs exit nil
-    _ -> throwEdh EvalError $ "Invalid argument to BoIndex(): " <> T.pack
-      (show argsSndr)
+        spec <- parseIndexSpec pgs args
+        let boi = if uniqIdx
+              then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
+              else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty
+        writeTVar (entity'store $ objEntity this) $ toDyn boi
+        exitEdhSTM pgs exit $ EdhObject this
+
+  boiReindexProc :: EdhProcedure
+  boiReindexProc !argsSndr !exit = packEdhArgs argsSndr $ \case
+    (ArgsPack [EdhObject !bo] !kwargs) | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ fromDynamic <$> readTVar es >>= \case
+        Nothing               -> error "bug: this is not a boi"
+        Just (boi :: BoIndex) -> do
+          boi' <- case boi of
+            UniqueIndex idx -> -- unique index
+              UniqueIndex <$> reindexUniqBusObj pgs bo idx
+            NonUniqueIndex idx -> -- non-unique index
+              NonUniqueIndex <$> reindexNouBusObj pgs bo idx
+          writeTVar es $ toDyn boi'
+          exitEdhSTM pgs exit $ EdhObject this
+    _ -> throwEdh EvalError "Invalid args to boiReindexProc"
 
   boiLookupProc :: EdhProcedure
   boiLookupProc = undefined
 
-  -- | host generator idx.range( since, until )
+  -- | host generator idx.groups( start=None, until=None )
+  boiGroupsProc :: EdhProcedure
+  boiGroupsProc !argsSender !exit =
+    packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> exitEdhProc exit nil
+
+  -- | host generator idx.range( start=None, until=None )
   boiRangeProc :: EdhProcedure
-  boiRangeProc !argsSender _ = ask >>= \pgs ->
+  boiRangeProc !argsSender !exit = ask >>= \pgs ->
     case generatorCaller $ edh'context pgs of
       Nothing          -> throwEdh EvalError "Can only be called as generator"
       Just genr'caller -> case argsSender of
