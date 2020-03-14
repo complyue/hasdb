@@ -12,11 +12,13 @@ import           Control.Concurrent.STM
 
 import qualified Data.HashMap.Strict           as Map
 import qualified Data.Text                     as T
+import           Data.Dynamic
 
 import           Data.Lossless.Decimal          ( castDecimalToInteger )
 import           Language.Edh.EHI
 
 import           DB.Storage.DataDir
+import           DB.Storage.InMem
 
 
 -- | utility className(*args,**kwargs)
@@ -56,9 +58,7 @@ newBoProc !argsSender !exit =
           contEdhSTM $ do
             boScope <- mkScopeWrapper world $ objectScope bo
             modifyTVar' (objSupers bo) (sbObj :)
-            let sbEnt = objEntity sbObj
-            modifyTVar' (entity'store sbEnt)
-              $ changeEntityAttr (entity'man sbEnt) (AttrByName "_boScope")
+            changeEntityAttr (objEntity sbObj) (AttrByName "_boScope")
               $ EdhObject boScope
             exitEdhSTM pgs exit $ EdhObject bo
         _ -> error "bug: createEdhObject returned non-object"
@@ -95,4 +95,97 @@ streamFromDiskProc !argsSender !exit = do
           $ castDecimalToInteger baseDFD
         return nil
     _ -> throwEdh EvalError "Invalid arg to `streamFromDisk`"
+
+
+boiReindexProc :: EdhProcedure
+boiReindexProc !argsSndr !exit = packEdhArgs argsSndr $ \case
+  (ArgsPack [EdhObject !bo] !kwargs) | Map.null kwargs -> do
+    pgs <- ask
+    let this = thisObject $ contextScope $ edh'context pgs
+        es   = entity'store $ objEntity this
+    contEdhSTM $ fromDynamic <$> readTVar es >>= \case
+      Nothing               -> error "bug: this is not a boi"
+      Just (boi :: BoIndex) -> do
+        boi' <- case boi of
+          UniqueIndex idx -> -- unique index
+            UniqueIndex <$> reindexUniqBusObj pgs bo idx
+          NonUniqueIndex idx -> -- non-unique index
+            NonUniqueIndex <$> reindexNouBusObj pgs bo idx
+        writeTVar es $ toDyn boi'
+        exitEdhSTM pgs exit $ EdhObject this
+  _ -> throwEdh EvalError "Invalid args to boiReindexProc"
+
+
+-- | host constructor BoIndex( indexSpec, unique=false )
+boiHostCtor
+  :: Scope       -- constructor scope
+  -> ArgsSender  -- construction args
+  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
+  -> STM ()
+boiHostCtor !scope _ obs = do
+  methods <- sequence
+    [ (AttrByName nm, ) <$> mkHostProc scope EdhMethod nm hp args
+    | (nm, hp, args) <-
+      [ ( "__init__"
+        , __init__
+        , PackReceiver
+          [ RecvArg "indexSpec" Nothing Nothing
+          , RecvArg "unique"    Nothing (Just (LitExpr (BoolLiteral False)))
+          ]
+        )
+      , ("<-", boiReindexProc, PackReceiver [RecvArg "bo" Nothing Nothing])
+      , ("[]", boiLookupProc , PackReceiver [RecvRestPosArgs "keyValues"])
+      , ( "groups"
+        , boiRangeProc
+        , PackReceiver
+          [ RecvArg "start" Nothing (Just (GodSendExpr edhNone))
+          , RecvArg "until" Nothing (Just (GodSendExpr edhNone))
+          ]
+        )
+      , ( "range"
+        , boiRangeProc
+        , PackReceiver
+          [ RecvArg "start" Nothing (Just (GodSendExpr edhNone))
+          , RecvArg "until" Nothing (Just (GodSendExpr edhNone))
+          ]
+        )
+      ]
+    ]
+  writeTVar obs $ Map.fromList methods
+
+ where
+
+  __init__ :: EdhProcedure
+  __init__ !argsSndr !exit = packEdhArgs argsSndr $ \case
+    (ArgsPack [EdhExpr _ !idxSpecExpr _] !kwargs) -> do
+      pgs <- ask
+      contEdhSTM $ do
+        uniqIdx <- case Map.lookup "unique" kwargs of
+          Nothing          -> return False
+          Just (EdhBool b) -> return b
+          Just v ->
+            throwEdhSTM pgs EvalError
+              $  "Invalid unique arg value type: "
+              <> T.pack (show $ edhTypeOf v)
+        exitEdhSTM pgs exit nil
+    _ -> throwEdh EvalError $ "Invalid argument to BoIndex(): " <> T.pack
+      (show argsSndr)
+
+  boiLookupProc :: EdhProcedure
+  boiLookupProc = undefined
+
+  -- | host generator idx.range( since, until )
+  boiRangeProc :: EdhProcedure
+  boiRangeProc !argsSender _ = ask >>= \pgs ->
+    case generatorCaller $ edh'context pgs of
+      Nothing          -> throwEdh EvalError "Can only be called as generator"
+      Just genr'caller -> case argsSender of
+        [SendPosArg !nExpr] -> evalExpr nExpr $ \(OriginalValue nVal _ _) ->
+          case nVal of
+            (EdhDecimal (Decimal d e n)) | d == 1 -> contEdhSTM
+              $ yieldOneEntity (fromIntegral n * 10 ^ (e + 6)) genr'caller
+            _ ->
+              throwEdh EvalError $ "Invalid argument: " <> T.pack (show nVal)
+        _ ->
+          throwEdh EvalError $ "Invalid argument: " <> T.pack (show argsSender)
 

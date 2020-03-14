@@ -43,38 +43,43 @@ main = do
 
       let moduScope = objectScope modu
 
-      !dbArts <- sequence
-        [ (AttrByName nm, ) <$> mkHostProc moduScope mc nm hp args
-        | (mc, nm, hp, args) <-
-          [ (EdhMethod, "className", classNameProc, WildReceiver)
-          , ( EdhMethod
-            , "newBo"
-            , newBoProc
-            , PackReceiver
-              [ RecvArg "boClass" Nothing Nothing
-              , RecvArg "sbEnt"   Nothing Nothing
-              ]
-            )
-          , ( EdhMethod
-            , "streamToDisk"
-            , streamToDiskProc
-            , PackReceiver
-              [ RecvArg "persistOutlet"  Nothing Nothing
-              , RecvArg "dataFileFolder" Nothing Nothing
-              , RecvArg "sinkBaseDFD"    Nothing Nothing
-              ]
-            )
-          , ( EdhMethod
-            , "streamFromDisk"
-            , streamFromDiskProc
-            , PackReceiver
-              [ RecvArg "restoreOutlet" Nothing Nothing
-              , RecvArg "baseDFD"       Nothing Nothing
-              ]
-            )
-          ]
-        ]
-      installEdhAttrs (objEntity modu) dbArts
+      !dbArts <-
+        sequence
+        $  [ (AttrByName nm, ) <$> mkHostProc moduScope mc nm hp args
+           | (mc, nm, hp, args) <-
+             [ (EdhMethod, "className", classNameProc, WildReceiver)
+             , ( EdhMethod
+               , "newBo"
+               , newBoProc
+               , PackReceiver
+                 [ RecvArg "boClass" Nothing Nothing
+                 , RecvArg "sbEnt"   Nothing Nothing
+                 ]
+               )
+             , ( EdhMethod
+               , "streamToDisk"
+               , streamToDiskProc
+               , PackReceiver
+                 [ RecvArg "persistOutlet"  Nothing Nothing
+                 , RecvArg "dataFileFolder" Nothing Nothing
+                 , RecvArg "sinkBaseDFD"    Nothing Nothing
+                 ]
+               )
+             , ( EdhMethod
+               , "streamFromDisk"
+               , streamFromDiskProc
+               , PackReceiver
+                 [ RecvArg "restoreOutlet" Nothing Nothing
+                 , RecvArg "baseDFD"       Nothing Nothing
+                 ]
+               )
+             ]
+           ]
+        ++ [ (AttrByName nm, ) <$> mkHostClass moduScope nm hc
+           | (nm, hc) <- [("BoIndex", boiHostCtor)]
+           ]
+
+      updateEntityAttrs (objEntity modu) dbArts
 
     modu <- createEdhModule world "<interactive>" "<adhoc>"
     doLoop world modu
