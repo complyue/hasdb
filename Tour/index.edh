@@ -1,0 +1,10 @@
+
+import (BoIndex, **_) 'db/ehi'
+
+boi = BoIndex(expr (a, b:false, c), unique=true)
+boi.unique
+boi.spec
+
+boi = BoIndex('a', 'b':false, 'c', unique=true)
+boi.unique
+boi.spec

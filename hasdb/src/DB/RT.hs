@@ -104,7 +104,7 @@ boiHostCtor
   -> ArgsSender
   -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
   -> STM ()
-boiHostCtor !pgsCtor _ obs = do
+boiHostCtor !pgsCtor _ !obs = do
   let !scope = contextScope $ edh'context pgsCtor
   methods <- sequence
     [ (AttrByName nm, ) <$> mkHostProc scope EdhMethod nm hp args
@@ -180,7 +180,8 @@ boiHostCtor !pgsCtor _ obs = do
     _ -> throwEdh EvalError "Invalid args to boiReindexProc"
 
   boiLookupProc :: EdhProcedure
-  boiLookupProc = undefined
+  boiLookupProc !argsSender !exit =
+    packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> exitEdhProc exit nil
 
   -- | host generator idx.groups( start=None, until=None )
   boiGroupsProc :: EdhProcedure

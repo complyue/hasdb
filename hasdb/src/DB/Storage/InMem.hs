@@ -4,35 +4,13 @@ module DB.Storage.InMem where
 import           Prelude
 -- import           Debug.Trace
 
-import           System.IO.Unsafe
-
-import           System.IO
-import           System.IO.Error
-import           System.FilePath
-import           System.Directory
-import           System.Posix
-import qualified System.Posix.Files.ByteString as PB
-
 import           Control.Monad
-import           Control.Monad.Reader
-import           Control.Exception
 import           Control.Concurrent.STM
 
-import           Data.Unique
-import qualified Data.Text                     as T
-import           Data.Text.Encoding
-import           Data.Time.Clock
-import           Data.Time.Format
-
-import qualified Data.ByteString               as B
-import qualified Data.ByteString.Char8         as C
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import qualified Data.HashMap.Strict           as Map
 import qualified Data.Map.Strict               as TreeMap
-import           Data.Dynamic
-
-import           Text.Megaparsec
 
 import           Language.Edh.EHI
 
@@ -41,12 +19,12 @@ type AscSort = Bool
 newtype IndexSpec = IndexSpec [(AttrKey, AscSort)]
   deriving (Eq)
 instance Show IndexSpec where
-  show (IndexSpec s) = "👉" <> showspec s <> "👈"
+  show (IndexSpec s) = "👉 " <> showspec s <> "👈"
    where
-    ordind asc = if asc then "🔼" else "🔽"
+    ordind asc = if asc then " 🔼 " else " 🔽 "
     showspec :: [(AttrKey, AscSort)] -> String
-    showspec []                 = "empty"
-    showspec ((attr, asc) : []) = show attr <> ordind asc
+    showspec []            = "empty"
+    showspec [(attr, asc)] = show attr <> ordind asc
     showspec ((attr, asc) : rest@(_ : _)) =
       show attr <> ordind asc <> showspec rest
 
