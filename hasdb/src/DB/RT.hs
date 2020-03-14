@@ -4,8 +4,6 @@ module DB.RT where
 import           Prelude
 -- import           Debug.Trace
 
--- import           System.IO.Unsafe
-
 import           Control.Monad.Reader
 -- import           Control.Concurrent
 import           Control.Concurrent.STM
@@ -117,7 +115,11 @@ boiHostCtor !pgsCtor _ !obs = do
           ]
         )
       , ("<-", boiReindexProc, PackReceiver [RecvArg "bo" Nothing Nothing])
-      , ("[]", boiLookupProc , PackReceiver [RecvRestPosArgs "keyValues"])
+      , ( "[]"
+        , boiLookupProc
+        , PackReceiver [RecvRestPosArgs "keyValues"]
+        )
+-- , ("lookup", boiLookupProc , PackReceiver [RecvRestPosArgs "keyValues"])
       , ( "groups"
         , boiGroupsProc
         , PackReceiver
@@ -167,21 +169,30 @@ boiHostCtor !pgsCtor _ !obs = do
       pgs <- ask
       let this = thisObject $ contextScope $ edh'context pgs
           es   = entity'store $ objEntity this
-      contEdhSTM $ fromDynamic <$> readTVar es >>= \case
-        Nothing               -> error "bug: this is not a boi"
-        Just (boi :: BoIndex) -> do
-          boi' <- case boi of
-            UniqueIndex idx -> -- unique index
-              UniqueIndex <$> reindexUniqBusObj pgs bo idx
-            NonUniqueIndex idx -> -- non-unique index
-              NonUniqueIndex <$> reindexNouBusObj pgs bo idx
-          writeTVar es $ toDyn boi'
-          exitEdhSTM pgs exit $ EdhObject this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs EvalError $ "bug: this is not a boi: " <> T.pack
+              (show esd)
+          Just (boi :: BoIndex) -> do
+            boi' <- case boi of
+              UniqueIndex idx -> -- unique index
+                UniqueIndex <$> reindexUniqBusObj pgs bo idx
+              NonUniqueIndex idx -> -- non-unique index
+                NonUniqueIndex <$> reindexNouBusObj pgs bo idx
+            writeTVar es $ toDyn boi'
+            exitEdhSTM pgs exit nil
     _ -> throwEdh EvalError "Invalid args to boiReindexProc"
 
   boiLookupProc :: EdhProcedure
   boiLookupProc !argsSender !exit =
-    packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> exitEdhProc exit nil
+    packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+      contEdhSTM $ do
+        esd <- readTVar $ entity'store $ objEntity this
+        exitEdhSTM pgs exit nil
 
   -- | host generator idx.groups( start=None, until=None )
   boiGroupsProc :: EdhProcedure

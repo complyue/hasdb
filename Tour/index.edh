@@ -1,10 +1,36 @@
 
 import (BoIndex, **_) 'db/ehi'
 
-boi = BoIndex(expr (a, b:false, c), unique=true)
+
+{
+  # this form more concise to do by hand
+  boi = BoIndex(expr (
+    a, b:false, c,
+  ), unique=true)
+}
 boi.unique
 boi.spec
 
-boi = BoIndex('a', 'b':false, 'c', unique=true)
+{
+  # this form easier to do programmatically
+  boi = BoIndex(*[
+    'a', 'b':false, 'c',
+  ], unique=true)
+}
 boi.unique
 boi.spec
+
+
+{
+  class BO { method __init__ (
+    a as this.a, b as this.b, c as this.c,
+  ) pass }
+
+  bo1 = BO(1,2,3)
+  bo2 = BO(3,2,1)
+}
+
+boi.(<-)(bo1)
+
+boi.(<-)(bo2)
+
