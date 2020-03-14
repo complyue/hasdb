@@ -100,11 +100,12 @@ streamFromDiskProc !argsSender !exit = do
 
 -- | host constructor BoIndex( indexSpec, unique=false )
 boiHostCtor
-  :: Scope       -- constructor scope
-  -> ArgsSender  -- construction args
+  :: EdhProgState
+  -> ArgsSender
   -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
   -> STM ()
-boiHostCtor !scope _ obs = do
+boiHostCtor !pgsCtor _ obs = do
+  let !scope = contextScope $ edh'context pgsCtor
   methods <- sequence
     [ (AttrByName nm, ) <$> mkHostProc scope EdhMethod nm hp args
     | (nm, hp, args) <-
@@ -151,6 +152,9 @@ boiHostCtor !scope _ obs = do
               $  "Invalid unique arg value type: "
               <> T.pack (show $ edhTypeOf v)
         spec <- parseIndexSpec pgs args
+        modifyTVar' obs
+          $ Map.insert (AttrByName "unique") (EdhBool uniqIdx)
+          . Map.insert (AttrByName "spec") (EdhString $ T.pack $ show spec)
         let boi = if uniqIdx
               then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
               else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty

@@ -26,9 +26,10 @@ import           Data.Time.Format
 
 import qualified Data.ByteString               as B
 import qualified Data.ByteString.Char8         as C
-import           Data.Text
-import           Data.HashMap.Strict           as Map
-import           Data.Map.Strict               as TreeMap
+import           Data.Text                      ( Text )
+import qualified Data.Text                     as T
+import qualified Data.HashMap.Strict           as Map
+import qualified Data.Map.Strict               as TreeMap
 import           Data.Dynamic
 
 import           Text.Megaparsec
@@ -50,11 +51,38 @@ instance Show IndexSpec where
       show attr <> ordind asc <> showspec rest
 
 parseIndexSpec :: EdhProgState -> [EdhValue] -> STM IndexSpec
-parseIndexSpec !pgs !args = case args of
-  [EdhExpr _ !idxSpecExpr _] -> return $ IndexSpec []
-  _ ->
-    throwEdhSTM pgs EvalError $ "Unsupported Index Specification: " <> T.pack
-      (show args)
+parseIndexSpec pgs !args = do
+  spec <- case args of
+    [EdhExpr _ (AttrExpr (DirectRef (NamedAttr !attrName))) _] ->
+      return [(AttrByName attrName, True)]
+    [EdhExpr _ (InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (LitExpr (BoolLiteral !asc))) _]
+      -> return [(AttrByName attrName, asc)]
+    [EdhExpr _ (TupleExpr !fieldSpecs) _] ->
+      sequence $ fieldFromExpr <$> fieldSpecs
+    fieldSpecs -> sequence $ fieldFromVal <$> fieldSpecs
+  when (null spec)
+    $ throwEdhSTM pgs EvalError "Index specification can not be empty"
+  return $ IndexSpec spec
+ where
+  fieldFromExpr :: Expr -> STM (AttrKey, AscSort)
+  fieldFromExpr x = case x of
+    AttrExpr (DirectRef (NamedAttr !attrName)) ->
+      return (AttrByName attrName, True)
+    InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (LitExpr (BoolLiteral !asc))
+      -> return (AttrByName attrName, asc)
+    TupleExpr [AttrExpr (DirectRef (NamedAttr !attrName)), LitExpr (BoolLiteral !asc)]
+      -> return (AttrByName attrName, asc)
+    _ -> throwEdhSTM pgs EvalError $ "Invalid index field spec: " <> T.pack
+      (show x)
+  fieldFromVal :: EdhValue -> STM (AttrKey, AscSort)
+  fieldFromVal x = case x of
+    EdhString !attrName -> return (AttrByName attrName, True)
+    EdhPair (EdhString !attrName) (EdhBool !asc) ->
+      return (AttrByName attrName, asc)
+    EdhTuple [EdhString !attrName, EdhBool !asc] ->
+      return (AttrByName attrName, asc)
+    _ -> throwEdhSTM pgs EvalError $ "Invalid index field spec: " <> T.pack
+      (show x)
 
 
 -- note the order of data constructors here decides how it's sorted,
