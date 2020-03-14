@@ -39,7 +39,7 @@ main = do
     installEdhBatteries world
 
     -- install the host module
-    void $ installEdhModule world "db/ehi" $ \modu -> do
+    void $ installEdhModule world "db/ehi" $ \pgs modu -> do
 
       let moduScope = objectScope modu
 
@@ -75,11 +75,11 @@ main = do
                )
              ]
            ]
-        ++ [ (AttrByName nm, ) <$> mkHostClass moduScope nm hc
+        ++ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
            | (nm, hc) <- [("BoIndex", boiHostCtor)]
            ]
 
-      updateEntityAttrs (objEntity modu) dbArts
+      updateEntityAttrs pgs (objEntity modu) dbArts
 
     modu <- createEdhModule world "<interactive>" "<adhoc>"
     doLoop world modu

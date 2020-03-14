@@ -59,7 +59,7 @@ newBoProc !argsSender !exit =
           contEdhSTM $ do
             boScope <- mkScopeWrapper world $ objectScope bo
             modifyTVar' (objSupers bo) (sbObj :)
-            changeEntityAttr (objEntity sbObj) (AttrByName "_boScope")
+            changeEntityAttr pgs (objEntity sbObj) (AttrByName "_boScope")
               $ EdhObject boScope
             exitEdhSTM pgs exit $ EdhObject bo
         _ -> error "bug: createEdhObject returned non-object"

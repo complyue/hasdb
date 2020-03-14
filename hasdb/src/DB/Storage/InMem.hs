@@ -115,7 +115,7 @@ extractIndexKey !pgs spec@(IndexSpec !spec') !bo = do
   return $ IndexKey spec kd
  where
   extractField :: AttrKey -> STM (Maybe IdxKeyVal)
-  extractField !k = lookupEdhObjAttr bo k >>= edhIdxKeyVal pgs
+  extractField !k = lookupEdhObjAttr pgs bo k >>= edhIdxKeyVal pgs
 
 
 -- | Unique Business Object Index
