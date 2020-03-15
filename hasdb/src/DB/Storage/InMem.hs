@@ -28,11 +28,28 @@ instance Show IndexSpec where
     showspec ((attr, asc) : rest@(_ : _)) =
       show attr <> ordind asc <> showspec rest
 
+indexFieldSortOrderSpec :: EdhProgState -> Text -> STM Bool
+indexFieldSortOrderSpec pgs ordSpec = case ordSpec of
+  "ASC"        -> return True
+  "DESC"       -> return False
+  "ASCENDING"  -> return True
+  "DESCENDING" -> return False
+  "asc"        -> return True
+  "desc"       -> return False
+  "ascending"  -> return True
+  "descending" -> return False
+  _ ->
+    throwEdhSTM pgs EvalError $ "Invalid index field sorting order: " <> ordSpec
+
 parseIndexSpec :: EdhProgState -> [EdhValue] -> STM IndexSpec
 parseIndexSpec pgs !args = do
   spec <- case args of
     [EdhExpr _ (AttrExpr (DirectRef (NamedAttr !attrName))) _] ->
       return [(AttrByName attrName, True)]
+    [EdhExpr _ (InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (AttrExpr (DirectRef (NamedAttr ordSpec)))) _]
+      -> do
+        asc <- indexFieldSortOrderSpec pgs ordSpec
+        return [(AttrByName attrName, asc)]
     [EdhExpr _ (InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (LitExpr (BoolLiteral !asc))) _]
       -> return [(AttrByName attrName, asc)]
     [EdhExpr _ (TupleExpr !fieldSpecs) _] ->
@@ -46,18 +63,32 @@ parseIndexSpec pgs !args = do
   fieldFromExpr x = case x of
     AttrExpr (DirectRef (NamedAttr !attrName)) ->
       return (AttrByName attrName, True)
+    InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (AttrExpr (DirectRef (NamedAttr ordSpec)))
+      -> do
+        asc <- indexFieldSortOrderSpec pgs ordSpec
+        return (AttrByName attrName, asc)
     InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (LitExpr (BoolLiteral !asc))
       -> return (AttrByName attrName, asc)
+    TupleExpr [AttrExpr (DirectRef (NamedAttr !attrName)), AttrExpr (DirectRef (NamedAttr ordSpec))]
+      -> do
+        asc <- indexFieldSortOrderSpec pgs ordSpec
+        return (AttrByName attrName, asc)
     TupleExpr [AttrExpr (DirectRef (NamedAttr !attrName)), LitExpr (BoolLiteral !asc)]
       -> return (AttrByName attrName, asc)
     _ -> throwEdhSTM pgs EvalError $ "Invalid index field spec: " <> T.pack
       (show x)
   fieldFromVal :: EdhValue -> STM (AttrKey, AscSort)
   fieldFromVal x = case x of
-    EdhString !attrName -> return (AttrByName attrName, True)
     EdhPair (EdhString !attrName) (EdhBool !asc) ->
       return (AttrByName attrName, asc)
     EdhTuple [EdhString !attrName, EdhBool !asc] ->
+      return (AttrByName attrName, asc)
+    EdhString !attrName -> return (AttrByName attrName, True)
+    EdhPair (EdhString !attrName) (EdhString !ordSpec) -> do
+      asc <- indexFieldSortOrderSpec pgs ordSpec
+      return (AttrByName attrName, asc)
+    EdhTuple [EdhString !attrName, EdhString !ordSpec] -> do
+      asc <- indexFieldSortOrderSpec pgs ordSpec
       return (AttrByName attrName, asc)
     _ -> throwEdhSTM pgs EvalError $ "Invalid index field spec: " <> T.pack
       (show x)

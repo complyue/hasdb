@@ -119,8 +119,9 @@ class DataBack {
       idx => (
         bocIndices[ keyAttrName ] |> (
           bocIndices[ keyAttrName ] = []
+        )
       )
-    )
+    }
     return idx
   }
 

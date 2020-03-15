@@ -1,4 +1,5 @@
 
 # re-export submodules
 
+import * './options'
 import * './machinery'
