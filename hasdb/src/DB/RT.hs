@@ -10,6 +10,7 @@ import           Control.Concurrent.STM
 
 import qualified Data.HashMap.Strict           as Map
 import           Data.Map.Strict               as TreeMap
+import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import           Data.Dynamic
 
@@ -22,11 +23,11 @@ import           DB.Storage.InMem
 
 -- | utility className(*args,**kwargs)
 classNameProc :: EdhProcedure
-classNameProc !argsSender !exit = do
+classNameProc !argsSndr !exit = do
   !pgs <- ask
   let callerCtx   = edh'context pgs
       callerScope = contextScope callerCtx
-  packEdhArgs argsSender $ \(ArgsPack !args !kwargs) ->
+  packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) ->
     let !argsCls = classNameOf <$> args
     in  if Map.null kwargs
           then case argsCls of
@@ -47,8 +48,8 @@ classNameProc !argsSender !exit = do
 
 -- | utility newBo(boClass, sbObj)
 newBoProc :: EdhProcedure
-newBoProc !argsSender !exit =
-  packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
+newBoProc !argsSndr !exit =
+  packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) -> case args of
     [EdhClass !cls, EdhObject !sbObj] | Map.null kwargs ->
       createEdhObject cls [] $ \(OriginalValue boVal _ _) -> case boVal of
         EdhObject !bo -> do
@@ -70,8 +71,8 @@ newBoProc !argsSender !exit =
 -- db shutdown, or other Edh threads will be terminated, including
 -- the one running the db app.
 streamToDiskProc :: EdhProcedure
-streamToDiskProc !argsSender !exit =
-  packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
+streamToDiskProc !argsSndr !exit =
+  packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) -> case args of
     [EdhSink !persistOutlet, EdhString !dataFileFolder, EdhSink !sinkBaseDFD]
       | Map.null kwargs -> edhWaitIO exit $ do
         -- not to use `unsafeIOToSTM` here, despite it being retry prone,
@@ -82,9 +83,9 @@ streamToDiskProc !argsSender !exit =
 
 -- | utility streamFromDisk(restoreOutlet, baseDFD)
 streamFromDiskProc :: EdhProcedure
-streamFromDiskProc !argsSender !exit = do
+streamFromDiskProc !argsSndr !exit = do
   pgs <- ask
-  packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> case args of
+  packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) -> case args of
     [EdhSink !restoreOutlet, EdhDecimal baseDFD] | Map.null kwargs ->
       -- not to use `unsafeIOToSTM` here, despite it being retry prone,
       -- nested `atomically` is prohibited as well.
@@ -105,33 +106,40 @@ boiHostCtor
 boiHostCtor !pgsCtor _ !obs = do
   let !scope = contextScope $ edh'context pgsCtor
   methods <- sequence
-    [ (AttrByName nm, ) <$> mkHostProc scope EdhMethod nm hp args
-    | (nm, hp, args) <-
+    [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp args
+    | (nm, vc, hp, args) <-
       [ ( "__init__"
+        , EdhMethod
         , __init__
         , PackReceiver
           [ RecvRestPosArgs "indexSpec"
           , RecvArg "unique" Nothing (Just (LitExpr (BoolLiteral False)))
           ]
         )
-      , ("<-", boiReindexProc, PackReceiver [RecvArg "bo" Nothing Nothing])
+      , ( "<-"
+        , EdhMethod
+        , boiReindexProc
+        , PackReceiver [RecvArg "bo" Nothing Nothing]
+        )
       , ( "[]"
+        , EdhMethod
         , boiLookupProc
         , PackReceiver [RecvArg "keyValues" Nothing Nothing]
         )
--- , ("lookup", boiLookupProc , PackReceiver [RecvRestPosArgs "keyValues"])
       , ( "groups"
-        , boiGroupsProc
+        , EdhGenrDef
+        , boiGroupsOrRangeProc listBoIndexGroups
         , PackReceiver
-          [ RecvArg "start" Nothing (Just (GodSendExpr edhNone))
-          , RecvArg "until" Nothing (Just (GodSendExpr edhNone))
+          [ RecvArg "min" Nothing (Just (GodSendExpr edhNone))
+          , RecvArg "max" Nothing (Just (GodSendExpr edhNone))
           ]
         )
       , ( "range"
-        , boiRangeProc
+        , EdhGenrDef
+        , boiGroupsOrRangeProc listBoIndexRange
         , PackReceiver
-          [ RecvArg "start" Nothing (Just (GodSendExpr edhNone))
-          , RecvArg "until" Nothing (Just (GodSendExpr edhNone))
+          [ RecvArg "min" Nothing (Just (GodSendExpr edhNone))
+          , RecvArg "max" Nothing (Just (GodSendExpr edhNone))
           ]
         )
       ]
@@ -197,31 +205,68 @@ boiHostCtor !pgsCtor _ !obs = do
             throwEdhSTM pgs EvalError $ "bug: this is not a boi : " <> T.pack
               (show esd)
           Just (boiVar :: TMVar BoIndex) -> do
-            boi        <- readTMVar boiVar
-            idxKeyVals <- case keyValues of
-              EdhTuple !kvs -> sequence (edhIdxKeyVal pgs <$> kvs)
-              !kv           -> (: []) <$> edhIdxKeyVal pgs kv
-            result <- lookupBoIndex boi idxKeyVals
-            exitEdhSTM pgs exit result
+            boi <- readTMVar boiVar
+            edhIdxKeyVals pgs keyValues >>= \case
+              Nothing          -> exitEdhSTM pgs exit nil
+              Just !idxKeyVals -> do
+                result <- lookupBoIndex boi idxKeyVals
+                exitEdhSTM pgs exit result
     _ -> throwEdh EvalError "Invalid args to boiLookupProc"
 
-  -- | host generator idx.groups( start=None, until=None )
-  boiGroupsProc :: EdhProcedure
-  boiGroupsProc !argsSender !exit =
-    packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> exitEdhProc exit nil
-
-  -- | host generator idx.range( start=None, until=None )
-  boiRangeProc :: EdhProcedure
-  boiRangeProc !argsSender !exit = ask >>= \pgs ->
+  -- | host generator idx.groups/range( min=None, max=None )
+  boiGroupsOrRangeProc
+    :: (  BoIndex
+       -> Maybe [Maybe IdxKeyVal]
+       -> Maybe [Maybe IdxKeyVal]
+       -> STM [(IndexKey, EdhValue)]
+       )
+    -> EdhProcedure
+  boiGroupsOrRangeProc fn !argsSndr !exit = do
+    pgs <- ask
+    let this = thisObject $ contextScope $ edh'context pgs
+        es   = entity'store $ objEntity this
     case generatorCaller $ edh'context pgs of
-      Nothing          -> throwEdh EvalError "Can only be called as generator"
-      Just genr'caller -> case argsSender of
-        [SendPosArg !nExpr] -> evalExpr nExpr $ \(OriginalValue nVal _ _) ->
-          case nVal of
-            (EdhDecimal (Decimal d e n)) | d == 1 -> contEdhSTM
-              $ yieldOneEntity (fromIntegral n * 10 ^ (e + 6)) genr'caller
-            _ ->
-              throwEdh EvalError $ "Invalid argument: " <> T.pack (show nVal)
-        _ ->
-          throwEdh EvalError $ "Invalid argument: " <> T.pack (show argsSender)
+      Nothing -> throwEdh EvalError "Can only be called as generator"
+      Just (!pgs', !iter'cb) -> packEdhArgs argsSndr $ \apk ->
+        let
+          yieldResult :: [(IndexKey, EdhValue)] -> STM ()
+          yieldResult [] = return ()
+          yieldResult ((ik, v) : rest) =
+            runEdhProg pgs'
+              $ iter'cb
+                  (EdhArgsPack
+                    (ArgsPack [edhValueOfIndexKey ik, noneNil v] Map.empty)
+                  )
+              $ \_ -> yieldResult rest
+        in
+          case parseIdxRng apk of
+            Left argsErr ->
+              throwEdh EvalError $ argsErr <> " for boiGroupsOrRangeProc"
+            Right (minKey, maxKey) -> contEdhSTM $ do
+              esd <- readTVar es
+              case fromDynamic esd of
+                Nothing ->
+                  throwEdhSTM pgs EvalError
+                    $  "bug: this is not a boi : "
+                    <> T.pack (show esd)
+                Just (boiVar :: TMVar BoIndex) -> do
+                  boi        <- readTMVar boiVar
+                  minKeyVals <- edhIdxKeyVals pgs minKey
+                  maxKeyVals <- edhIdxKeyVals pgs maxKey
+                  result     <- fn boi minKeyVals maxKeyVals
+                  yieldResult result
+                  exitEdhSTM pgs exit nil
 
+
+type IdxRng = (EdhValue, EdhValue)
+parseIdxRng :: ArgsPack -> Either Text IdxRng
+parseIdxRng =
+  parseArgsPack (nil, nil)
+    $ ArgsPackParser
+        [ \v (_, argMax) -> Right (v, argMax)
+        , \v (argMin, _) -> Right (argMin, v)
+        ]
+    $ Map.fromList
+        [ ("min", \v (_, argMax) -> Right (v, argMax))
+        , ("max", \v (argMin, _) -> Right (argMin, v))
+        ]

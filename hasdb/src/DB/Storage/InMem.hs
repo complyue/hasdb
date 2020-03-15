@@ -122,6 +122,20 @@ edhIdxKeyVal !pgs !val =
   throwEdhSTM pgs EvalError $ "Invalid value type to be indexed: " <> T.pack
     (show $ edhTypeOf val)
 
+edhIdxKeyVals :: EdhProgState -> EdhValue -> STM (Maybe [Maybe IdxKeyVal])
+edhIdxKeyVals _   EdhNil         = return Nothing
+edhIdxKeyVals _   (EdhTuple [] ) = return Nothing
+edhIdxKeyVals pgs (EdhTuple kvs) = Just <$> sequence (edhIdxKeyVal pgs <$> kvs)
+edhIdxKeyVals pgs kv             = Just . (: []) <$> edhIdxKeyVal pgs kv
+
+edhValOfIdxKey :: Maybe IdxKeyVal -> EdhValue
+edhValOfIdxKey Nothing                  = nil
+edhValOfIdxKey (Just (IdxBoolVal v   )) = EdhBool v
+edhValOfIdxKey (Just (IdxNumVal  v   )) = EdhDecimal v
+edhValOfIdxKey (Just (IdxStrVal  v   )) = EdhString v
+edhValOfIdxKey (Just (IdxAggrVal ikvs)) = EdhTuple $ edhValOfIdxKey <$> ikvs
+
+
 -- todo using lists here may be less efficient due to cache unfriendly,
 --      is GHC smart enough to optimize these lists or better change to 
 --      more cache friendly data structures with less levels of indirection ?
@@ -160,6 +174,9 @@ extractIndexKey !pgs spec@(IndexSpec !spec') !bo = do
  where
   extractField :: AttrKey -> STM (Maybe IdxKeyVal)
   extractField !k = lookupEdhObjAttr pgs bo k >>= edhIdxKeyVal pgs
+
+edhValueOfIndexKey :: IndexKey -> EdhValue
+edhValueOfIndexKey (IndexKey _ ikvs) = EdhTuple $ edhValOfIdxKey <$> ikvs
 
 
 -- | Unique Business Object Index
@@ -219,11 +236,13 @@ indexSpecOf :: BoIndex -> IndexSpec
 indexSpecOf (UniqueIndex    (UniqBoIdx spec _ _)) = spec
 indexSpecOf (NonUniqueIndex (NouBoIdx  spec _ _)) = spec
 
+
 reindexBusinessObject :: BoIndex -> EdhProgState -> Object -> STM BoIndex
 reindexBusinessObject (UniqueIndex !boi) pgs bo =
   UniqueIndex <$> reindexUniqBusObj boi pgs bo
 reindexBusinessObject (NonUniqueIndex !boi) pgs bo =
   NonUniqueIndex <$> reindexNouBusObj boi pgs bo
+
 
 lookupBoIndex :: BoIndex -> [Maybe IdxKeyVal] -> STM EdhValue
 lookupBoIndex (UniqueIndex (UniqBoIdx !spec !tree _)) !idxKeyVals =
@@ -236,11 +255,53 @@ lookupBoIndex (NonUniqueIndex (NouBoIdx !spec !tree _)) !idxKeyVals =
     Just !bos -> return $ EdhTuple $ EdhObject <$> Set.toList bos
 
 
-yieldOneEntity :: Int -> EdhGenrCaller -> STM ()
-yieldOneEntity !delayMicros genr'caller@(!pgs', !iter'cb) = do
-  let v = 1
-  -- yield the nanosecond timestamp to iterator
-  runEdhProg pgs' $ iter'cb (EdhDecimal v) $ \_ ->
-    yieldOneEntity delayMicros genr'caller
+listBoIndexGroups
+  :: BoIndex
+  -> Maybe [Maybe IdxKeyVal]
+  -> Maybe [Maybe IdxKeyVal]
+  -> STM [(IndexKey, EdhValue)]
+listBoIndexGroups (UniqueIndex (UniqBoIdx !spec !tree _)) !minKeyVals !maxKeyVals
+  = return $ (<$> seg) $ \(k, bo) -> (k, EdhTuple [EdhObject bo])
+  where seg = indexKeyRange spec tree minKeyVals maxKeyVals
+listBoIndexGroups (NonUniqueIndex (NouBoIdx !spec !tree _)) !minKeyVals !maxKeyVals
+  = return $ (<$> seg) $ \(k, bos) ->
+    (k, EdhTuple $ EdhObject <$> Set.toList bos)
+  where seg = indexKeyRange spec tree minKeyVals maxKeyVals
 
+listBoIndexRange
+  :: BoIndex
+  -> Maybe [Maybe IdxKeyVal]
+  -> Maybe [Maybe IdxKeyVal]
+  -> STM [(IndexKey, EdhValue)]
+listBoIndexRange (UniqueIndex (UniqBoIdx !spec !tree _)) !minKeyVals !maxKeyVals
+  = return $ (<$> seg) $ \(k, bo) -> (k, EdhObject bo)
+  where seg = indexKeyRange spec tree minKeyVals maxKeyVals
+listBoIndexRange (NonUniqueIndex (NouBoIdx !spec !tree _)) !minKeyVals !maxKeyVals
+  = return $ (`concatMap` seg) $ \(k, bos) ->
+    [ (k, EdhObject bo) | bo <- Set.toList bos ]
+  where seg = indexKeyRange spec tree minKeyVals maxKeyVals
+
+
+indexKeyRange
+  :: IndexSpec
+  -> TreeMap.Map IndexKey a
+  -> Maybe [Maybe IdxKeyVal]
+  -> Maybe [Maybe IdxKeyVal]
+  -> [(IndexKey, a)]
+indexKeyRange spec tree !minKeyVals !maxKeyVals =
+  let tree1 = case minKeyVals of
+        Nothing -> tree
+        Just minKVs ->
+          TreeMap.dropWhileAntitone (< (IndexKey spec minKVs)) tree
+      tree2 = case maxKeyVals of
+        Nothing -> tree1
+        Just maxKVs ->
+          TreeMap.takeWhileAntitone (<= (IndexKey spec maxKVs)) tree1
+  in  TreeMap.toList tree2
+_indexKeyRange  -- tracking https://github.com/haskell/containers/issues/708
+  :: IndexKey -> IndexKey -> TreeMap.Map IndexKey a -> [(IndexKey, a)]
+_indexKeyRange !minKey !maxKey =
+  TreeMap.toList
+    . TreeMap.takeWhileAntitone (<= maxKey)
+    . TreeMap.dropWhileAntitone (< minKey)
 

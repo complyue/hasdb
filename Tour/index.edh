@@ -47,3 +47,11 @@ noi.(<-)(bo3)
 uoi[1,2,3]
 
 noi[1,2,3]
+
+
+for (ik, bo) from uoi.range() do runtime.info<| 'unique one: ' ++ ik ++ ' - ' ++ bo
+
+for (ik, bo) from noi.range() do runtime.info<| 'non-unique one: ' ++ ik ++ ' - ' ++ bo
+
+for (ik, bos) from noi.groups() do runtime.info<| 'group ' ++ ik ++ ' - ' ++ bos
+
