@@ -11,6 +11,7 @@ import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import qualified Data.HashMap.Strict           as Map
 import qualified Data.Map.Strict               as TreeMap
+import qualified Data.HashSet                  as Set
 
 import           Language.Edh.EHI
 
@@ -111,35 +112,41 @@ edhIdxKeyVal _    (EdhString  v ) = return $ Just $ IdxStrVal v
 edhIdxKeyVal !pgs (EdhTuple   vs) = do
   ikvs <- sequence $ edhIdxKeyVal pgs <$> vs
   return $ Just $ IdxAggrVal ikvs
-edhIdxKeyVal !pgs (EdhList (List _ vs')) = do
-  vs   <- readTVar vs'
-  ikvs <- sequence $ edhIdxKeyVal pgs <$> vs
-  return $ Just $ IdxAggrVal ikvs
+-- list is mutable, meaning can change without going through entity attr
+-- update, don't support it so far
+-- edhIdxKeyVal !pgs (EdhList (List _ vs')) = do
+--   vs   <- readTVar vs'
+--   ikvs <- sequence $ edhIdxKeyVal pgs <$> vs
+--   return $ Just $ IdxAggrVal ikvs
 edhIdxKeyVal !pgs !val =
   throwEdhSTM pgs EvalError $ "Invalid value type to be indexed: " <> T.pack
     (show $ edhTypeOf val)
 
-data IndexKey = IndexKey {
-      spec'of'key :: !IndexSpec
-    , data'of'key :: ![Maybe IdxKeyVal]
-  } deriving (Eq)
--- todo using lists here may be less efficient due to cache unfriendly
+-- todo using lists here may be less efficient due to cache unfriendly,
 --      is GHC smart enough to optimize these lists or better change to 
 --      more cache friendly data structures with less levels of indirection ?
+data IndexKey = IndexKey !IndexSpec ![Maybe IdxKeyVal]
+  deriving (Eq)
 instance Ord IndexKey where
   compare (IndexKey x'spec x'key) (IndexKey y'spec y'key) = if x'spec /= y'spec
     then error "bug: different index spec to compare"
     else cmp x'spec x'key y'key
    where
     cmp :: IndexSpec -> [Maybe IdxKeyVal] -> [Maybe IdxKeyVal] -> Ordering
-    cmp (IndexSpec []) _       _       = EQ  -- equal according to the spec
-    cmp _              []      []      = EQ  -- sequence is equal regardless of spec
-    cmp _              (_ : _) []      = LT  -- always sort shorter sequence to last
-    cmp _              []      (_ : _) = GT  -- always sort shorter sequence to last
+    -- equal according to the spec
+    cmp (IndexSpec []) _       _       = EQ
+    -- sequence is equal regardless of spec
+    cmp _              []      []      = EQ
+    -- prefix match considered equal, TODO this creates problems ?
+    cmp _              (_ : _) []      = EQ
+    cmp _              []      (_ : _) = EQ
+    -- both nil considered equal
     cmp (IndexSpec (_ : s'rest)) (Nothing : x'rest) (Nothing : y'rest) =
       cmp (IndexSpec s'rest) x'rest y'rest
-    cmp _ (Nothing : _) (_       : _) = GT  -- always sort absent field value to last
-    cmp _ (_       : _) (Nothing : _) = LT  -- always sort absent field value to last
+    -- always sort absent field value to last
+    cmp _ (Nothing : _) (_       : _) = GT
+    cmp _ (_       : _) (Nothing : _) = LT
+    -- non-nil comparation, apply asc/desc translation
     cmp (IndexSpec ((_, asc) : s'rest)) (Just x'v : x'rest) (Just y'v : y'rest)
       = case compare x'v y'v of
         EQ -> cmp (IndexSpec s'rest) x'rest y'rest
@@ -164,8 +171,8 @@ data UniqBoIdx = UniqBoIdx {
     , reverse'of'uniq'idx :: !(Map.HashMap Object IndexKey)
   }
 
-reindexUniqBusObj :: EdhProgState -> Object -> UniqBoIdx -> STM UniqBoIdx
-reindexUniqBusObj !pgs !bo uboi@(UniqBoIdx spec !tree !rvrs) = do
+reindexUniqBusObj :: UniqBoIdx -> EdhProgState -> Object -> STM UniqBoIdx
+reindexUniqBusObj uboi@(UniqBoIdx spec !tree !rvrs) !pgs !bo = do
   newKey <- extractIndexKey pgs spec bo
   case TreeMap.lookup newKey tree' of
     Just _ ->
@@ -186,27 +193,47 @@ data NouBoIdx = NouBoIdx {
       spec'of'nou'idx :: !IndexSpec
       -- TODO find and use an effecient container with fast entry key update
       --      it's less optimal as using two maps here for now
-    , tree'of'nou'idx :: !(TreeMap.Map IndexKey (Map.HashMap Object ()))
+    , tree'of'nou'idx :: !(TreeMap.Map IndexKey (Set.HashSet Object))
     , reverse'of'nou'idx :: !(Map.HashMap Object IndexKey)
   }
 
-reindexNouBusObj :: EdhProgState -> Object -> NouBoIdx -> STM NouBoIdx
-reindexNouBusObj !pgs !bo boi@(NouBoIdx !spec !tree !rvrs) = do
+reindexNouBusObj :: NouBoIdx -> EdhProgState -> Object -> STM NouBoIdx
+reindexNouBusObj boi@(NouBoIdx !spec !tree !rvrs) !pgs !bo = do
   newKey <- extractIndexKey pgs spec bo
   return boi { tree'of'nou'idx    = TreeMap.alter putBoIn newKey tree'
              , reverse'of'nou'idx = Map.insert bo newKey rvrs
              }
  where
-  putBoIn :: Maybe (Map.HashMap Object ()) -> Maybe (Map.HashMap Object ())
+  putBoIn :: Maybe (Set.HashSet Object) -> Maybe (Set.HashSet Object)
   putBoIn oldEntry = case oldEntry of
-    Nothing       -> Just $ Map.singleton bo ()
-    Just siblings -> Just $ Map.insert bo () siblings
+    Nothing       -> Just $ Set.singleton bo
+    Just siblings -> Just $ Set.insert bo siblings
   tree' = case Map.lookup bo rvrs of
     Nothing     -> tree
-    Just oldKey -> TreeMap.update (Just . Map.delete bo) oldKey tree
+    Just oldKey -> TreeMap.update (Just . Set.delete bo) oldKey tree
 
 
 data BoIndex = UniqueIndex !UniqBoIdx | NonUniqueIndex !NouBoIdx
+
+indexSpecOf :: BoIndex -> IndexSpec
+indexSpecOf (UniqueIndex    (UniqBoIdx spec _ _)) = spec
+indexSpecOf (NonUniqueIndex (NouBoIdx  spec _ _)) = spec
+
+reindexBusinessObject :: BoIndex -> EdhProgState -> Object -> STM BoIndex
+reindexBusinessObject (UniqueIndex !boi) pgs bo =
+  UniqueIndex <$> reindexUniqBusObj boi pgs bo
+reindexBusinessObject (NonUniqueIndex !boi) pgs bo =
+  NonUniqueIndex <$> reindexNouBusObj boi pgs bo
+
+lookupBoIndex :: BoIndex -> [Maybe IdxKeyVal] -> STM EdhValue
+lookupBoIndex (UniqueIndex (UniqBoIdx !spec !tree _)) !idxKeyVals =
+  case TreeMap.lookup (IndexKey spec idxKeyVals) tree of
+    Nothing  -> return EdhNil
+    Just !bo -> return $ EdhObject bo
+lookupBoIndex (NonUniqueIndex (NouBoIdx !spec !tree _)) !idxKeyVals =
+  case TreeMap.lookup (IndexKey spec idxKeyVals) tree of
+    Nothing   -> return EdhNil
+    Just !bos -> return $ EdhTuple $ EdhObject <$> Set.toList bos
 
 
 yieldOneEntity :: Int -> EdhGenrCaller -> STM ()

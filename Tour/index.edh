@@ -6,22 +6,22 @@ import (BoIndex, **_) 'db/ehi'
 
 {
   # this form more concise to write by hand
-  boi = BoIndex(expr (
+  uoi = BoIndex(expr (
     a, b:DESC, c:ASC,
   ), unique=true)
 }
-boi.unique
-boi.spec
+uoi.unique
+uoi.spec
 
 {
   indexSpec = [ # this list to be generated from cfg etc.
     'a', 'b':false, ('c', true),
   ]
   # this form more concise to write programmatically
-  boi = BoIndex(*indexSpec, unique=true)
+  noi = BoIndex(*indexSpec, unique=false)
 }
-boi.unique
-boi.spec
+noi.unique
+noi.spec
 
 
 {
@@ -31,11 +31,19 @@ boi.spec
 
   bo1 = BO(1,2,3)
   bo2 = BO(3,2,1)
+  bo3 = BO(1,2,3)
 }
 
-boi.(<-)(bo1)
-boi.(<-)(bo2)
-
+uoi.(<-)(bo1)
+uoi.(<-)(bo2)
 # should fall as violating unique constraint
-boi.(<-)( BO(1,2,3) )
+uoi.(<-)(bo3)
 
+noi.(<-)(bo1)
+noi.(<-)(bo2)
+noi.(<-)(bo3)
+
+
+uoi[1,2,3]
+
+noi[1,2,3]

@@ -99,7 +99,7 @@ streamFromDiskProc !argsSender !exit = do
 -- | host constructor BoIndex( indexSpec, unique=false )
 boiHostCtor
   :: EdhProgState
-  -> ArgsSender
+  -> ArgsSender  -- ctor args, if __init__() is provided, will go there too
   -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
   -> STM ()
 boiHostCtor !pgsCtor _ !obs = do
@@ -110,14 +110,14 @@ boiHostCtor !pgsCtor _ !obs = do
       [ ( "__init__"
         , __init__
         , PackReceiver
-          [ RecvArg "indexSpec" Nothing Nothing
-          , RecvArg "unique"    Nothing (Just (LitExpr (BoolLiteral False)))
+          [ RecvRestPosArgs "indexSpec"
+          , RecvArg "unique" Nothing (Just (LitExpr (BoolLiteral False)))
           ]
         )
       , ("<-", boiReindexProc, PackReceiver [RecvArg "bo" Nothing Nothing])
       , ( "[]"
         , boiLookupProc
-        , PackReceiver [RecvRestPosArgs "keyValues"]
+        , PackReceiver [RecvArg "keyValues" Nothing Nothing]
         )
 -- , ("lookup", boiLookupProc , PackReceiver [RecvRestPosArgs "keyValues"])
       , ( "groups"
@@ -176,26 +176,34 @@ boiHostCtor !pgsCtor _ !obs = do
           Nothing ->
             throwEdhSTM pgs EvalError $ "bug: this is not a boi : " <> T.pack
               (show esd)
-    -- index update is expensive, use TMVar to avoid computation being retried
           Just (boiVar :: TMVar BoIndex) -> do
+    -- index update is expensive, use TMVar to avoid computation being retried
             boi  <- takeTMVar boiVar
-            boi' <- case boi of
-              UniqueIndex idx -> -- unique index
-                UniqueIndex <$> reindexUniqBusObj pgs bo idx
-              NonUniqueIndex idx -> -- non-unique index
-                NonUniqueIndex <$> reindexNouBusObj pgs bo idx
+            boi' <- reindexBusinessObject boi pgs bo
             putTMVar boiVar boi'
             exitEdhSTM pgs exit nil
     _ -> throwEdh EvalError "Invalid args to boiReindexProc"
 
   boiLookupProc :: EdhProcedure
-  boiLookupProc !argsSender !exit =
-    packEdhArgs argsSender $ \(ArgsPack !args !kwargs) -> do
+  boiLookupProc !argsSndr !exit = packEdhArgs argsSndr $ \case
+    (ArgsPack [keyValues] !kwargs) | Map.null kwargs -> do
       pgs <- ask
       let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
       contEdhSTM $ do
-        esd <- readTVar $ entity'store $ objEntity this
-        exitEdhSTM pgs exit nil
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs EvalError $ "bug: this is not a boi : " <> T.pack
+              (show esd)
+          Just (boiVar :: TMVar BoIndex) -> do
+            boi        <- readTMVar boiVar
+            idxKeyVals <- case keyValues of
+              EdhTuple !kvs -> sequence (edhIdxKeyVal pgs <$> kvs)
+              !kv           -> (: []) <$> edhIdxKeyVal pgs kv
+            result <- lookupBoIndex boi idxKeyVals
+            exitEdhSTM pgs exit result
+    _ -> throwEdh EvalError "Invalid args to boiLookupProc"
 
   -- | host generator idx.groups( start=None, until=None )
   boiGroupsProc :: EdhProcedure
