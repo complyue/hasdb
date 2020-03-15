@@ -160,7 +160,8 @@ boiHostCtor !pgsCtor _ !obs = do
         let boi = if uniqIdx
               then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
               else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty
-        writeTVar (entity'store $ objEntity this) $ toDyn boi
+        boiVar <- newTMVar boi
+        writeTVar (entity'store $ objEntity this) $ toDyn boiVar
         exitEdhSTM pgs exit $ EdhObject this
 
   boiReindexProc :: EdhProcedure
@@ -173,15 +174,17 @@ boiHostCtor !pgsCtor _ !obs = do
         esd <- readTVar es
         case fromDynamic esd of
           Nothing ->
-            throwEdhSTM pgs EvalError $ "bug: this is not a boi: " <> T.pack
+            throwEdhSTM pgs EvalError $ "bug: this is not a boi : " <> T.pack
               (show esd)
-          Just (boi :: BoIndex) -> do
+    -- index update is expensive, use TMVar to avoid computation being retried
+          Just (boiVar :: TMVar BoIndex) -> do
+            boi  <- takeTMVar boiVar
             boi' <- case boi of
               UniqueIndex idx -> -- unique index
                 UniqueIndex <$> reindexUniqBusObj pgs bo idx
               NonUniqueIndex idx -> -- non-unique index
                 NonUniqueIndex <$> reindexNouBusObj pgs bo idx
-            writeTVar es $ toDyn boi'
+            putTMVar boiVar boi'
             exitEdhSTM pgs exit nil
     _ -> throwEdh EvalError "Invalid args to boiReindexProc"
 
