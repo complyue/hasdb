@@ -57,7 +57,13 @@ parseIndexSpec pgs !args = do
       -> return [(AttrByName attrName, asc)]
     [EdhExpr _ (TupleExpr !fieldSpecs) _] ->
       sequence $ fieldFromExpr <$> fieldSpecs
-    fieldSpecs -> sequence $ fieldFromVal <$> fieldSpecs
+    [EdhTuple !fieldSpecs  ] -> sequence $ fieldFromVal <$> fieldSpecs
+    [EdhList  (List _ !fsl)] -> do
+      fieldSpecs <- readTVar fsl
+      sequence $ fieldFromVal <$> fieldSpecs
+    _ ->
+      throwEdhSTM pgs EvalError $ "Invalid index specification: " <> T.pack
+        (show args)
   when (null spec)
     $ throwEdhSTM pgs EvalError "Index specification can not be empty"
   return $ IndexSpec spec
