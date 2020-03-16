@@ -94,6 +94,8 @@ class DataBack {
     persistOutlet as this.persistOutlet, 
     dbApp,
   ) {
+    # have the app as 1st super, so it can override DataBackLifecycle methods
+    # invoked from this db instance
     extends( dbApp )
   }
 
@@ -101,27 +103,17 @@ class DataBack {
   # to a list of index entries for indices having the key attr involved.
   _indices = {,}
 
-  # this method is called by assignment (to an attribute of the db app)
-  # in normal cases, so it tends to run within a tx anyway, we mark it
-  # with `ai` for extra certain.
-  method createIndex( boClass, keyAttrs ) ai {
-    bocIndices = this._indices[boClass] |> (
-      this._indices[boClass] = {,}
+  # this method is normally called as the right-hand-expr of an assignment
+  # (to an attribute of the db app), so it tends to run within a tx already,
+  # we mark it with `ai` for extra certain.
+  method createIndex( boClass, indexSpec, unique=false ) ai {
+    idx = BoIndex( indexSpec, unique=unique, )
+    bocIndices = this._indices[boClass] |>    (
+                 this._indices[boClass] = {,} )
+    for keyAttr from idx.keys do idx => (
+      bocIndices[ keyAttr ] |>   (
+      bocIndices[ keyAttr ] = [] )
     )
-    idx = BoIndex( keyAttrs )
-    for keyAttr from keyAttrs do {
-      keyAttrName = case keyAttr of {
-        { attr: sortingOrder } -> attr
-        keyAttr
-      }
-      if StringType != type(keyAttrName) then
-        error( 'Invalid key attribute: ' ++ keyAttr )
-      idx => (
-        bocIndices[ keyAttrName ] |> (
-          bocIndices[ keyAttrName ] = []
-        )
-      )
-    }
     return idx
   }
 
@@ -134,11 +126,8 @@ class DataBack {
   # class having a separate dict in `_extents`
   _extents = {,}
 
-  method superBack( **kwargs ) {
-    SuperBack( 
-      db=this, eid=this._last_eid+=1, 
-      **kwargs,
-    )
+  method superBack() {
+    SuperBack( db=this, eid=this._last_eid+=1, )
   }
 
   # settle a new business object
@@ -376,23 +365,49 @@ class SuperBack {
   # keyed by a pair of <rel-class>:<ref-attr>, then by the key attrs.
   _kins = {,}
 
-  method createKindex ( kinAttr, relClass, relAttr, keyAttrs ) {
-    idx = BoIndex( keyAttrs )
-    this._kins[ relClass:relAttr ] = idx
-    # will be available from `that` as super attr
-    this$kinAttr = idx
+  # create an index for sorted kins, that automatically maintained by the data
+  # back.
+  #
+  # a kin to a business object - the referee - (being either an entity or a
+  # relationship), is another relationship object - the referer - which (through
+  # a specific attribute) referencing the referee.
+  #
+  # DataBack automatically maintains a reverse reference from the referee to
+  # the referer within an BoIndex object created by `createKinIndex()` or
+  # BoSet object created by `createKinSet()`, resides in the referee's SuperBack
+  # super object, available as a super attribute there from the referee object.
+  method createKinIndex ( kinAttr, relClass, relAttr, indexSpec, unique=false ) {
+    idx = BoIndex( indexSpec, unique=unique )
+    # chain the 2 assignments into single transaction
+    this._kins[ relClass:relAttr ] = (
+      # will be available from `that` as super attr
+      this$kinAttr = idx
+    )
   }
 
-  method (@<-) ( attrKey ) case that?$attrKey of {
-    nil -> {
-      # TODO provide magic attribute as can from here
-
-      continue  # no such (magic) attr from this super
-    }
-    { attrVal } -> attrVal
+  # create a set for unordered kins, that automatically maintained by the data
+  # back.
+  #
+  # a kin to a business object - the referee - (being either an entity or a
+  # relationship), is another relationship object - the referer - which (through
+  # a specific attribute) referencing the referee.
+  #
+  # DataBack automatically maintains a reverse reference from the referee to
+  # the referer within an BoIndex object created by `createKinIndex()` or
+  # BoSet object created by `createKinSet()`, resides in the referee's SuperBack
+  # super object, available as a super attribute there from the referee object.
+  method createKinSet ( kinAttr, relClass, relAttr ) {
+    ks = BoSet()  # TODO impl. host class BoSet
+    # chain the 2 assignments into single transaction
+    this._kins[ relClass:relAttr ] = (
+      # will be available from `that` as super attr
+      this$kinAttr = ks
+    )
   }
 
-  # handles `extends db.superBack()` from a business object's class proc
+  # `extends db.superBack()` from a business object's __init__() triggers
+  # this magic method, such a statement carries *persistent object creation*
+  # semantic regarding the target `db` being the persistence backer.
   method (<-^) (boScope) {
     this?_boScope &> error (
       'bug: more than 1 business objects per SuperBack instance'
