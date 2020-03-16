@@ -133,6 +133,9 @@ class DataBack {
   # settle a new business object
   # in a tx process all attributes atm
   method _settle_obj( bo, sb ) ai {
+    boClass = constructor(bo)
+    bocIndices = this._indices[ boClass ]
+    touchedIndices = {}  # collect touched global indices by attr
     persistAttrs = []
     for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
       # referencing another business object, settle the relationship
@@ -141,11 +144,21 @@ class DataBack {
 
         # encounter the new relationship
         (attrKey, className(attrVal), sbRef.eid) => persistAttrs
+
+        # add reverse reference to the referee sb's kin index/set if any
+        case sbRef._kins[ boClass:attrKey ] of { kin } -> {
+          kin.(<-)(bo)
+        }
       }
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
         # encounter the new attribute value
         (attrKey, attrVal) => persistAttrs
+
+        # encounter touched index by this attr
+        case bocIndices |> nil &> bocIndices[ attrKey ] of { boi } -> {
+          touchedIndices[ boi ] = true
+        }
       }
       # not to persist, treating as a transient attribute
       {#
@@ -157,14 +170,17 @@ class DataBack {
     }
 
     # put into global extent
-    ai case this._extents[constructor(bo)] of {
-      nil -> this._extents[constructor(bo)] = {
+    case this._extents[boClass] of {
+      nil -> this._extents[boClass] = {
         sb.eid: bo
       }
       { boExtent } -> {
         boExtent[sb.eid] = bo
       }
     }
+
+    # index into all touched global indices
+    for (boi, _) from touchedIndices do boi.(<-)(bo)
 
     # persist all attributes of the new business object
     this.persistOutlet <- (className(bo), sb.eid, persistAttrs)
