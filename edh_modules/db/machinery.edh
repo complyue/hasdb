@@ -126,6 +126,9 @@ class DataBack {
   # class having a separate dict in `_extents`
   _extents = {,}
 
+  # the version number that all live objects have been dumped
+  _dump_version = 0
+
   method superBack() {
     SuperBack( db=this, eid=this._last_eid+=1, )
   }
@@ -144,21 +147,16 @@ class DataBack {
 
         # encounter the new relationship
         (attrKey, className(attrVal), sbRef.eid) => persistAttrs
-
-        # add reverse reference to the referee sb's kin index/set if any
-        case sbRef._kins[ boClass:attrKey ] of { kin } -> {
-          kin.(<-)(bo)
-        }
       }
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
-        # encounter the new attribute value
-        (attrKey, attrVal) => persistAttrs
-
         # encounter touched index by this attr
         case bocIndices |> nil &> bocIndices[ attrKey ] of { boi } -> {
           touchedIndices[ boi ] = true
         }
+
+        # encounter the new attribute value
+        (attrKey, attrVal) => persistAttrs
       }
       # not to persist, treating as a transient attribute
       {#
@@ -200,6 +198,13 @@ class DataBack {
 
     # handle trivially representable values, including `nil`
     ;| hasReConRepr(attrVal) -> {
+      # re-index to the global index if any touched
+      case this._indices[ constructor(bo) ] of { bocIndices } -> {
+        case bocIndices[ attrKey ] of { boi } -> {
+          boi.(<-)(bo)
+        }
+      }
+
       # persist the new attribute value
       this.persistOutlet <- (className(bo), sb.eid, [
         (attrKey, attrVal)
@@ -217,36 +222,17 @@ class DataBack {
 
   # settle a new relationship
   method _settle_rel( boRel, sbRel, refAttr, bo, sb ) {
-    # counted reverse reference key, a pair of <rel-class>:<ref-attr>
-    kinKey = constructor(boRel):refAttr
-
-    # update the reverse reference for this very relationship
-    #
-    # an ai tx is used to protect against racing in adding a first `kinRCs`
-    # dict for a new `kinKey` to overwrite eachother.
-    ai case sb._kins[kinKey] of {
-      nil -> sb._kins[kinKey] = {
-        boRel: 1
-      }
-      { kinRCs } -> kinRCs[boRel] = case kinRCs[boRel] of {
-        nil -> 1
-        { rc } -> error('bug: dup reverse ref')
-      }
+    # update reverse reference on the referee sb's kin index/set if any
+    case sb._kins[ constructor(boRel):refAttr ] of { kin } -> {
+      kin.(<-)(boRel)
     }
   }
 
   # cleanup an old relationship
   method _cleanup_rel( boRel, sbRel, refAttr, boOld, sbOld ) {
-    # counted reverse reference key, a pair of <rel-class>:<ref-attr>
-    kinKey = constructor(boRel):refAttr
-
-    # update the reverse reference for this very relationship
-    kinRCs = sb._kins[kinKey]
-    # the assignment has an implicit tx which is just enough
-    kinRCs[boRel] = case kinRCs[boRel] of {
-      1 -> nil  # assigning to nil just deletes the entry
-      { nil } -> error('bug: reverse ref lost')
-      { rc } -> error('bug: unexpected rc=' ++ rc)
+    # throw away reverse reference on the referee sb's kin index/set if any
+    case sbOld._kins[ constructor(boRel):refAttr ] of { kin } -> {
+      kin.(^*)(boRel)
     }
   }
 
@@ -254,30 +240,49 @@ class DataBack {
   # objects atm to be recorded by the current backing data file, especially
   # without objects had been alive but deleted during replay of history.
   method _dumpBaseData() {
-    for (boClass, boExtent) from this._extents do {
-      boClassName = className(boClass)
-      for (eid, bo) from boExtent do case bo of {{ SuperBack: sb }} -> {
-        persistAttrs = []
-        for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
-          # referencing another business object
-          {{ SuperBack: sbRef }} ->  {
-            (attrKey, className(attrVal), sbRef.eid) => persistAttrs
-          }
-          # handle trivially representable values, including `nil`
-          ;| hasReConRepr(attrVal) -> {
-            # encounter the new attribute value
-            (attrKey, attrVal) => persistAttrs
-          }
-          # not to persist, treating as a transient attribute
-          {#
-          runtime.debug<| 'attribute of type ' ++ type(attrVal)
-            ++ ' treated as transient attribute ' ++ attrKey 
-            ++ ' for business object ' ++ sb.eid
-            ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
-          #}
+    # mark a new dump by increasing the version
+    this._dump_version += 1
+
+    method _dumpBo( bo, sb ) {
+      if sb?_dumped_version == this._dump_version then
+        return nil  # this bo already dumped to version
+
+      persistAttrs = []
+      for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
+        # referencing another business object
+        {{ SuperBack: sbRef }} ->  {
+          # dump the referee now to ensure it'll be restored before this bo
+          # being restored, in future replays of history
+          _dumpBo( attrVal, sbRef )
+          # record this ref attr
+          (attrKey, className(attrVal), sbRef.eid) => persistAttrs
         }
-        # persist all attributes of this business object
-        this.persistOutlet <- (boClassName, eid, persistAttrs)
+        # handle trivially representable values, including `nil`
+        ;| hasReConRepr(attrVal) -> {
+          # encounter the new attribute value
+          (attrKey, attrVal) => persistAttrs
+        }
+        # not to persist, treating as a transient attribute
+        {#
+        runtime.debug<| 'attribute of type ' ++ type(attrVal)
+          ++ ' treated as transient attribute ' ++ attrKey 
+          ++ ' for business object ' ++ sb.eid
+          ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
+        #}
+      }
+
+      # persist all attributes of this business object
+      this.persistOutlet <- (className(bo), sb.eid, persistAttrs)
+      # mark it dumped to version
+      sb._dumped_version = this._dump_version
+    }
+
+    # dump all live objects in extent
+    for (boClass, boExtent) from this._extents do {
+      for (eid, bo) from boExtent do case bo of {{ SuperBack: sb }} -> {
+        #if eid != sb.eid then
+        #  error( 'bug: eid mismatch ' ++ eid ++ ' vs ' ++ sb.eid )
+        _dumpBo( bo, sb )
       }
     }
   }
@@ -300,17 +305,10 @@ class DataBack {
         ai if eid > this._last_eid then
           this._last_eid = eid
 
-        ai case this._extents[boClass] of {
-          nil -> {
-            this._extents[boClass] = (bocExtent = {,})
-            bo = nil
-          }
-          { bocExtent } -> {
-            bo = bocExtent[eid]
-          }
-        }
+        bocExtent = this._extents[boClass] |>    (
+                    this._extents[boClass] = {,} )
 
-        case bo of {
+        case bo = bocExtent[eid] of {
           nil -> {
             # this bo not created yet, do non-standard construction of the
             # business object
@@ -320,48 +318,61 @@ class DataBack {
             bocExtent[eid] = bo
           }
           {{ SuperBack: sb }} -> {
-            # already created, fallthrough to apply attr updates
-            pass
+            pass  # already created, proceed to apply attr updates
           }
           error( 'bug: no SuperBack on existing bo' )
         }
 
-        # TODO perform index update accordingly, maybe differently handled
-        #      when its a new object or not; aggregate attr updates to avoid
-        #      unnecessary index updates probably.
-
+        bocIndices = this._indices[ boClass ]
+        touchedIndices = {}  # collect touched global indices by attr
+        deleted = false
         for attrChg from attrChgs do case attrChg of {
+          nil -> {  # deletion
+            deleted = true
+            bo.delete()
+          }
 
-          # delete
-          nil -> {
+          # change of relationship
+          {( attrKey, refClassName, eidRef )} -> {
+            refClass = super?$refClassName
+            if ClassType != type(refClass) then error (
+              'Business class ' ++ refClassName ++ ' not available!'
+            )
+            refExtent = this._extents[refClass]
+            case refExtent |> nil &> refExtent[eidRef] of {
+              nil -> error( 'The business object ' ++ refClassName ++ '#' ++ eidRef 
+                  ++ ' lost, referenced via ' ++ attrKey ++ ' by ' ++ boClassName 
+                  ++ '#' ++ eid )
+              { boRef } -> { pass }
+            }
 
-            # disconnect all relationships
-            # TODO xxx
+            # cleanup the old relationship
+            case attrValOld = sb._boScope.get(attrKey) of {{ SuperBack: sbRefOld }} ->
+              this._cleanup_rel( bo, sb, attrKey, attrValOld, sbRefOld)
 
-            # unref this bo from global extent
-            bocExtent[eid] = nil
+            # update ref attr of this relationship without magic
+            case boRef of {{ DataBack: sbRef }} -> {
+              sb._boScope.put(attrKey: boRef)
+              this._settle_rel( bo, sb, attrKey, boRef, sbRef )
+            }
           }
 
           # change of trivial attribute
           {( attrKey, attrVal )} -> {
+            # encounter touched index by this attr
+            case bocIndices |> nil &> bocIndices[ attrKey ] of { boi } -> {
+              touchedIndices[ boi ] = true
+            }
 
             # update attr without magic
             sb._boScope.put(attrKey: attrVal)
-
-          }
-
-          # change of relationship
-          {( attrKey, refClassName, refIdent )} -> {
-
-            # TODO disconnect old relationship
-
-            # update relationship without magic
-            # TODO xxx
-            # sb._boScope.put(attrKey: xxx)
-
           }
 
           error( 'bug: unsupported persistent attr chg pattern' )
+        }
+        if not deleted then {
+          # re-index into all touched global indices
+          for (boi, _) from touchedIndices do boi.(<-)(bo)
         }
       }
 
@@ -458,9 +469,30 @@ class SuperBack {
   # updates the same
   this.(<-@) = (*<-@)
 
-  # TODO impl.
+  # delete this business object in persistence respect
   method delete() {
-    runtime.fatal<| 'deletion of backed business object not impl. yet'
+    boClass = constructor(that)
+    bocIndices = this._indices[ boClass ]
+    touchedIndices = {}  # collect touched global indices by attr
+    for (attrKey, attrVal) from this._boScope.attrs() do case attrVal of {
+      # referencing another business object, settle the relationship
+      {{ SuperBack: sbRef }} ->  {
+        this.db._cleanup_rel( that, this, attrKey, attrVal, sbRef )
+      }
+      # handle trivially representable values, including `nil`
+      ;| hasReConRepr(attrVal) -> {
+        # encounter touched index by this attr
+        case bocIndices |> nil &> bocIndices[ attrKey ] of { boi } -> {
+          touchedIndices[ boi ] = true
+        }
+      }
+    }
+    # remove from global extent
+    case this.db._extents[boClass] of { bocExtent } -> {
+      bocExtent[this.eid] = nil
+    }
+    # throw away from all touched global indices
+    for (boi, _) from touchedIndices do boi.(^*)(that)
   }
 
 }
