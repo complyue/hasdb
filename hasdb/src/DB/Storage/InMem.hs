@@ -13,6 +13,8 @@ import qualified Data.HashMap.Strict           as Map
 import qualified Data.Map.Strict               as TreeMap
 import qualified Data.HashSet                  as Set
 
+import qualified DB.Storage.InMem.TreeIdx      as TI
+
 import           Language.Edh.EHI
 
 
@@ -288,20 +290,8 @@ indexKeyRange
   -> Maybe [Maybe IdxKeyVal]
   -> Maybe [Maybe IdxKeyVal]
   -> [(IndexKey, a)]
-indexKeyRange spec tree !minKeyVals !maxKeyVals =
-  let tree1 = case minKeyVals of
-        Nothing -> tree
-        Just minKVs ->
-          TreeMap.dropWhileAntitone (< (IndexKey spec minKVs)) tree
-      tree2 = case maxKeyVals of
-        Nothing -> tree1
-        Just maxKVs ->
-          TreeMap.takeWhileAntitone (<= (IndexKey spec maxKVs)) tree1
-  in  TreeMap.toList tree2
-_indexKeyRange  -- tracking https://github.com/haskell/containers/issues/708
-  :: IndexKey -> IndexKey -> TreeMap.Map IndexKey a -> [(IndexKey, a)]
-_indexKeyRange !minKey !maxKey =
-  TreeMap.toList
-    . TreeMap.takeWhileAntitone (<= maxKey)
-    . TreeMap.dropWhileAntitone (< minKey)
+indexKeyRange spec tree !minKeyVals !maxKeyVals = TI.foldRange
+  (: [])
+  (IndexKey spec <$> minKeyVals, IndexKey spec <$> maxKeyVals)
+  tree
 

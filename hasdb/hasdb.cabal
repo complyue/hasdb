@@ -28,6 +28,7 @@ executable hasdb
         DB.DataWorld
         DB.Comm.MicroProto
         DB.Storage.InMem
+        DB.Storage.InMem.TreeIdx
         DB.Storage.DataDir
         DB.RT
     default-language: Haskell2010
