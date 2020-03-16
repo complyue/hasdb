@@ -197,7 +197,7 @@ data UniqBoIdx = UniqBoIdx {
   }
 
 reindexUniqBusObj :: UniqBoIdx -> EdhProgState -> Object -> STM UniqBoIdx
-reindexUniqBusObj uboi@(UniqBoIdx spec !tree !rvrs) !pgs !bo = do
+reindexUniqBusObj uboi@(UniqBoIdx !spec !tree !rvrs) !pgs !bo = do
   newKey <- extractIndexKey pgs spec bo
   case TreeMap.lookup newKey tree' of
     Just _ ->
@@ -207,6 +207,16 @@ reindexUniqBusObj uboi@(UniqBoIdx spec !tree !rvrs) !pgs !bo = do
     Nothing -> return uboi { tree'of'uniq'idx = TreeMap.insert newKey bo tree'
                            , reverse'of'uniq'idx = Map.insert bo newKey rvrs
                            }
+ where
+  tree' = case Map.lookup bo rvrs of
+    Nothing     -> tree
+    Just oldKey -> TreeMap.delete oldKey tree
+
+throwAwayUniqIdxObj :: UniqBoIdx -> EdhProgState -> Object -> STM UniqBoIdx
+throwAwayUniqIdxObj uboi@(UniqBoIdx _ !tree !rvrs) _ !bo = return uboi
+  { tree'of'uniq'idx    = tree'
+  , reverse'of'uniq'idx = Map.delete bo rvrs
+  }
  where
   tree' = case Map.lookup bo rvrs of
     Nothing     -> tree
@@ -237,6 +247,16 @@ reindexNouBusObj boi@(NouBoIdx !spec !tree !rvrs) !pgs !bo = do
     Nothing     -> tree
     Just oldKey -> TreeMap.update (Just . Set.delete bo) oldKey tree
 
+throwAwayNouIdxObj :: NouBoIdx -> EdhProgState -> Object -> STM NouBoIdx
+throwAwayNouIdxObj boi@(NouBoIdx _ !tree !rvrs) _ !bo = return boi
+  { tree'of'nou'idx    = tree'
+  , reverse'of'nou'idx = Map.delete bo rvrs
+  }
+ where
+  tree' = case Map.lookup bo rvrs of
+    Nothing     -> tree
+    Just oldKey -> TreeMap.update (Just . Set.delete bo) oldKey tree
+
 
 data BoIndex = UniqueIndex !UniqBoIdx | NonUniqueIndex !NouBoIdx
 
@@ -250,6 +270,12 @@ reindexBusinessObject (UniqueIndex !boi) pgs bo =
   UniqueIndex <$> reindexUniqBusObj boi pgs bo
 reindexBusinessObject (NonUniqueIndex !boi) pgs bo =
   NonUniqueIndex <$> reindexNouBusObj boi pgs bo
+
+throwAwayIndexedObject :: BoIndex -> EdhProgState -> Object -> STM BoIndex
+throwAwayIndexedObject (UniqueIndex !boi) pgs bo =
+  UniqueIndex <$> throwAwayUniqIdxObj boi pgs bo
+throwAwayIndexedObject (NonUniqueIndex !boi) pgs bo =
+  NonUniqueIndex <$> throwAwayNouIdxObj boi pgs bo
 
 
 lookupBoIndex :: BoIndex -> [Maybe IdxKeyVal] -> STM EdhValue

@@ -121,6 +121,11 @@ boiHostCtor !pgsCtor _ !obs = do
         , boiReindexProc
         , PackReceiver [RecvArg "bo" Nothing Nothing]
         )
+      , ( "^*"
+        , EdhMethod
+        , boiThrowAwayProc
+        , PackReceiver [RecvArg "bo" Nothing Nothing]
+        )
       , ( "[]"
         , EdhMethod
         , boiLookupProc
@@ -193,6 +198,26 @@ boiHostCtor !pgsCtor _ !obs = do
             putTMVar boiVar boi'
             exitEdhSTM pgs exit nil
     _ -> throwEdh EvalError "Invalid args to boiReindexProc"
+
+  boiThrowAwayProc :: EdhProcedure
+  boiThrowAwayProc !argsSndr !exit = packEdhArgs argsSndr $ \case
+    (ArgsPack [EdhObject !bo] !kwargs) | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs EvalError $ "bug: this is not a boi : " <> T.pack
+              (show esd)
+          Just (boiVar :: TMVar BoIndex) -> do
+    -- index update is expensive, use TMVar to avoid computation being retried
+            boi  <- takeTMVar boiVar
+            boi' <- throwAwayIndexedObject boi pgs bo
+            putTMVar boiVar boi'
+            exitEdhSTM pgs exit nil
+    _ -> throwEdh EvalError "Invalid args to boiThrowAwayProc"
 
   boiLookupProc :: EdhProcedure
   boiLookupProc !argsSndr !exit = packEdhArgs argsSndr $ \case
