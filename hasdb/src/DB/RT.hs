@@ -161,10 +161,12 @@ boiHostCtor !pgsCtor _ !obs = do
             throwEdhSTM pgs EvalError
               $  "Invalid unique arg value type: "
               <> T.pack (show $ edhTypeOf v)
-        spec <- parseIndexSpec pgs args
+        spec@(IndexSpec spec') <- parseIndexSpec pgs args
         modifyTVar' obs
           $ Map.insert (AttrByName "unique") (EdhBool uniqIdx)
           . Map.insert (AttrByName "spec") (EdhString $ T.pack $ show spec)
+          . Map.insert (AttrByName "keys")
+                       (EdhTuple $ attrKeyValue . fst <$> spec')
         let boi = if uniqIdx
               then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
               else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty

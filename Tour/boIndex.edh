@@ -12,16 +12,18 @@ import (BoIndex, **_) 'db/ehi'
 }
 uoi.unique
 uoi.spec
+uoi.keys
 
 {
   indexSpec = [ # this list to be generated from cfg etc.
     'a', 'b':false, ('c', true),
   ]
   # this form more concise to write programmatically
-  noi = BoIndex(*indexSpec, unique=false)
+  noi = BoIndex(indexSpec, unique=false)
 }
 noi.unique
 noi.spec
+noi.keys
 
 
 {
