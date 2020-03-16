@@ -132,15 +132,15 @@ class DataBack {
 
   # settle a new business object
   # in a tx process all attributes atm
-  method _settle_obj( boEnt, sbEnt ) ai {
+  method _settle_obj( bo, sb ) ai {
     persistAttrs = []
-    for (attrKey, attrVal) from sbEnt._boScope.attrs() do case attrVal of {
+    for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
       # referencing another business object, settle the relationship
-      {{ SuperBack: sbRefEnt }} ->  {
-        this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
+      {{ SuperBack: sbRef }} ->  {
+        this._settle_rel( bo, sb, attrKey, attrVal, sbRef )
 
         # encounter the new relationship
-        (attrKey, className(attrVal), sbRefEnt.eid) => persistAttrs
+        (attrKey, className(attrVal), sbRef.eid) => persistAttrs
       }
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
@@ -151,41 +151,41 @@ class DataBack {
       {#
       runtime.debug<| 'attribute of type ' ++ type(attrVal)
         ++ ' treated as transient attribute ' ++ attrKey 
-        ++ ' for business object ' ++ sbEnt.eid
-        ++ ' of class defined at ' ++ sbEnt._boScope.lexiLoc()
+        ++ ' for business object ' ++ sb.eid
+        ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
       #}
     }
 
     # put into global extent
-    ai case this._extents[constructor(boEnt)] of {
-      nil -> this._extents[constructor(boEnt)] = {
-        sbEnt.eid: boEnt
+    ai case this._extents[constructor(bo)] of {
+      nil -> this._extents[constructor(bo)] = {
+        sb.eid: bo
       }
       { boExtent } -> {
-        boExtent[sbEnt.eid] = boEnt
+        boExtent[sb.eid] = bo
       }
     }
 
     # persist all attributes of the new business object
-    this.persistOutlet <- (className(boEnt), sbEnt.eid, persistAttrs)
+    this.persistOutlet <- (className(bo), sb.eid, persistAttrs)
   }
 
   # settle an attribute update
-  method _settle_attr( boEnt, sbEnt, attrKey, attrVal ) case attrVal of {
+  method _settle_attr( bo, sb, attrKey, attrVal ) case attrVal of {
     # referencing another business object, settle the relationship
-    {{ SuperBack: sbRefEnt }} ->  {
-      this._settle_rel( boEnt, sbEnt, attrKey, attrVal, sbRefEnt )
+    {{ SuperBack: sbRef }} ->  {
+      this._settle_rel( bo, sb, attrKey, attrVal, sbRef )
 
       # persist the new relationship
-      this.persistOutlet <- (className(boEnt), sbEnt.eid, [
-        (attrKey, className(attrVal), sbRefEnt.eid)
+      this.persistOutlet <- (className(bo), sb.eid, [
+        (attrKey, className(attrVal), sbRef.eid)
       ])
     }
 
     # handle trivially representable values, including `nil`
     ;| hasReConRepr(attrVal) -> {
       # persist the new attribute value
-      this.persistOutlet <- (className(boEnt), sbEnt.eid, [
+      this.persistOutlet <- (className(bo), sb.eid, [
         (attrKey, attrVal)
       ])
     }
@@ -194,13 +194,13 @@ class DataBack {
     {#
     runtime.debug<| 'attribute of type ' ++ type(attrVal)
       ++ ' treated as transient attribute ' ++ attrKey 
-      ++ ' for business object ' ++ sbEnt.eid
-      ++ ' of class defined at ' ++ sbEnt._boScope.lexiLoc()
+      ++ ' for business object ' ++ sb.eid
+      ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
     #}
   }
 
   # settle a new relationship
-  method _settle_rel( boRel, sbRel, refAttr, boEnt, sbEnt ) {
+  method _settle_rel( boRel, sbRel, refAttr, bo, sb ) {
     # counted reverse reference key, a pair of <rel-class>:<ref-attr>
     kinKey = constructor(boRel):refAttr
 
@@ -208,8 +208,8 @@ class DataBack {
     #
     # an ai tx is used to protect against racing in adding a first `kinRCs`
     # dict for a new `kinKey` to overwrite eachother.
-    ai case sbEnt._kins[kinKey] of {
-      nil -> sbEnt._kins[kinKey] = {
+    ai case sb._kins[kinKey] of {
+      nil -> sb._kins[kinKey] = {
         boRel: 1
       }
       { kinRCs } -> kinRCs[boRel] = case kinRCs[boRel] of {
@@ -220,12 +220,12 @@ class DataBack {
   }
 
   # cleanup an old relationship
-  method _cleanup_rel( boRel, sbRel, refAttr, boEntOld, sbEntOld ) {
+  method _cleanup_rel( boRel, sbRel, refAttr, boOld, sbOld ) {
     # counted reverse reference key, a pair of <rel-class>:<ref-attr>
     kinKey = constructor(boRel):refAttr
 
     # update the reverse reference for this very relationship
-    kinRCs = sbEnt._kins[kinKey]
+    kinRCs = sb._kins[kinKey]
     # the assignment has an implicit tx which is just enough
     kinRCs[boRel] = case kinRCs[boRel] of {
       1 -> nil  # assigning to nil just deletes the entry
@@ -240,12 +240,12 @@ class DataBack {
   method _dumpBaseData() {
     for (boClass, boExtent) from this._extents do {
       boClassName = className(boClass)
-      for (eid, boEnt) from boExtent do case boEnt of {{ SuperBack: sbEnt }} -> {
+      for (eid, bo) from boExtent do case bo of {{ SuperBack: sb }} -> {
         persistAttrs = []
-        for (attrKey, attrVal) from sbEnt._boScope.attrs() do case attrVal of {
+        for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
           # referencing another business object
-          {{ SuperBack: sbRefEnt }} ->  {
-            (attrKey, className(attrVal), sbRefEnt.eid) => persistAttrs
+          {{ SuperBack: sbRef }} ->  {
+            (attrKey, className(attrVal), sbRef.eid) => persistAttrs
           }
           # handle trivially representable values, including `nil`
           ;| hasReConRepr(attrVal) -> {
@@ -256,8 +256,8 @@ class DataBack {
           {#
           runtime.debug<| 'attribute of type ' ++ type(attrVal)
             ++ ' treated as transient attribute ' ++ attrKey 
-            ++ ' for business object ' ++ sbEnt.eid
-            ++ ' of class defined at ' ++ sbEnt._boScope.lexiLoc()
+            ++ ' for business object ' ++ sb.eid
+            ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
           #}
         }
         # persist all attributes of this business object
@@ -287,23 +287,23 @@ class DataBack {
         ai case this._extents[boClass] of {
           nil -> {
             this._extents[boClass] = (bocExtent = {,})
-            boEnt = nil
+            bo = nil
           }
           { bocExtent } -> {
-            boEnt = bocExtent[eid]
+            bo = bocExtent[eid]
           }
         }
 
-        case boEnt of {
+        case bo of {
           nil -> {
             # this bo not created yet, do non-standard construction of the
             # business object
-            sbEnt = SuperBack( this, eid )
-            boEnt = newBo( boClass, sbEnt )
+            sb = SuperBack( this, eid )
+            bo = newBo( boClass, sb )
 
-            bocExtent[eid] = boEnt
+            bocExtent[eid] = bo
           }
-          {{ SuperBack: sbEnt }} -> {
+          {{ SuperBack: sb }} -> {
             # already created, fallthrough to apply attr updates
             pass
           }
@@ -330,18 +330,18 @@ class DataBack {
           {( attrKey, attrVal )} -> {
 
             # update attr without magic
-            sbEnt._boScope.put(attrKey: attrVal)
+            sb._boScope.put(attrKey: attrVal)
 
           }
 
           # change of relationship
-          {( attrKey, refClassName, refEntIdent )} -> {
+          {( attrKey, refClassName, refIdent )} -> {
 
             # TODO disconnect old relationship
 
             # update relationship without magic
             # TODO xxx
-            # sbEnt._boScope.put(attrKey: xxx)
+            # sb._boScope.put(attrKey: xxx)
 
           }
 
@@ -431,8 +431,8 @@ class SuperBack {
     that$attrKey = attrVal
 
     # cleanup the old relationship
-    case attrValOld of {{ SuperBack: sbRefEntOld }} ->
-      this.db._cleanup_rel( that, this, attrKey, attrValOld, sbRefEntOld)
+    case attrValOld of {{ SuperBack: sbRefOld }} ->
+      this.db._cleanup_rel( that, this, attrKey, attrValOld, sbRefOld)
 
     # settle new attribute
     this.db._settle_attr( that, this, attrKey, attrVal )
