@@ -10,6 +10,7 @@ import           Control.Concurrent.STM
 
 import qualified Data.HashMap.Strict           as Map
 import           Data.Map.Strict               as TreeMap
+import qualified Data.HashSet                  as Set
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import           Data.Dynamic
@@ -297,3 +298,97 @@ parseIdxRng =
         [ ("min", \v (_, argMax) -> Right (v, argMax))
         , ("max", \v (argMin, _) -> Right (argMin, v))
         ]
+
+
+-- | host constructor BoSet()
+bosHostCtor
+  :: EdhProgState
+  -> ArgsSender  -- ctor args, if __init__() is provided, will go there too
+  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
+  -> STM ()
+bosHostCtor !pgsCtor _ !obs = do
+  let !scope = contextScope $ edh'context pgsCtor
+      !this  = thisObject scope
+  bosVar <- newTMVar (Set.empty :: BoSet)
+  writeTVar (entity'store $ objEntity this) $ toDyn bosVar
+  methods <- sequence
+    [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp args
+    | (nm, vc, hp, args) <-
+      [ ( "<-"
+        , EdhMethod
+        , bosAddProc
+        , PackReceiver [RecvArg "bo" Nothing Nothing]
+        )
+      , ( "^*"
+        , EdhMethod
+        , bosThrowAwayProc
+        , PackReceiver [RecvArg "bo" Nothing Nothing]
+        )
+      , ("all", EdhGenrDef, bosAllProc, PackReceiver [])
+      ]
+    ]
+  writeTVar obs $ Map.fromList methods
+
+ where
+
+  bosAddProc :: EdhProcedure
+  bosAddProc !argsSndr !exit = packEdhArgs argsSndr $ \case
+    (ArgsPack [EdhObject !bo] !kwargs) | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs EvalError $ "bug: this is not a bos : " <> T.pack
+              (show esd)
+          Just (bosVar :: TMVar BoSet) -> do
+            bos <- takeTMVar bosVar
+            putTMVar bosVar $ Set.insert bo bos
+            exitEdhSTM pgs exit nil
+    _ -> throwEdh EvalError "Invalid args to bosAddProc"
+
+  bosThrowAwayProc :: EdhProcedure
+  bosThrowAwayProc !argsSndr !exit = packEdhArgs argsSndr $ \case
+    (ArgsPack [EdhObject !bo] !kwargs) | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs EvalError $ "bug: this is not a bos : " <> T.pack
+              (show esd)
+          Just (bosVar :: TMVar BoSet) -> do
+            bos <- takeTMVar bosVar
+            putTMVar bosVar $ Set.delete bo bos
+            exitEdhSTM pgs exit nil
+    _ -> throwEdh EvalError "Invalid args to bosThrowAwayProc"
+
+  -- | host generator bos.all()
+  bosAllProc :: EdhProcedure
+  bosAllProc _ !exit = do
+    pgs <- ask
+    let this = thisObject $ contextScope $ edh'context pgs
+        es   = entity'store $ objEntity this
+    case generatorCaller $ edh'context pgs of
+      Nothing -> throwEdh EvalError "Can only be called as generator"
+      Just (!pgs', !iter'cb) ->
+        let yieldResult :: [Object] -> STM ()
+            yieldResult [] = return ()
+            yieldResult (bo : rest) =
+                runEdhProg pgs' $ iter'cb (EdhObject bo) $ \_ -> yieldResult rest
+        in  contEdhSTM $ do
+              esd <- readTVar es
+              case fromDynamic esd of
+                Nothing ->
+                  throwEdhSTM pgs EvalError
+                    $  "bug: this is not a bos : "
+                    <> T.pack (show esd)
+                Just (bosVar :: TMVar BoSet) -> do
+                  bos <- readTMVar bosVar
+                  yieldResult $ Set.toList bos
+                  exitEdhSTM pgs exit nil
+

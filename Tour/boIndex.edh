@@ -1,7 +1,29 @@
 
 import * 'db'
 
-import (BoIndex, **_) 'db/ehi'
+import (BoIndex, BoSet, **_) 'db/ehi'
+
+
+{
+  class BO { method __init__ (
+    a as this.a, b as this.b, c as this.c,
+  ) pass }
+
+  bo1 = BO(1,2,3)
+  bo2 = BO(3,2,1)
+  bo3 = BO(1,2,3)
+}
+
+
+bos = BoSet()
+
+bos.(<-)(bo1)
+bos.(<-)(bo2)
+bos.(<-)(bo3)
+
+bos.(^*)(bo2)
+
+for bo from bos.all() do runtime.info <| 'got bo in set: ' ++ bo
 
 
 {
@@ -25,16 +47,6 @@ noi.unique
 noi.spec
 noi.keys
 
-
-{
-  class BO { method __init__ (
-    a as this.a, b as this.b, c as this.c,
-  ) pass }
-
-  bo1 = BO(1,2,3)
-  bo2 = BO(3,2,1)
-  bo3 = BO(1,2,3)
-}
 
 uoi.(<-)(bo1)
 uoi.(<-)(bo2)

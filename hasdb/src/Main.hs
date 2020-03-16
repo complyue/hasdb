@@ -76,7 +76,7 @@ main = do
              ]
            ]
         ++ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
-           | (nm, hc) <- [("BoIndex", boiHostCtor)]
+           | (nm, hc) <- [("BoIndex", boiHostCtor), ("BoSet", bosHostCtor)]
            ]
 
       updateEntityAttrs pgs (objEntity modu) dbArts

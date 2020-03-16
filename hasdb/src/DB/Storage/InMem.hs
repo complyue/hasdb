@@ -18,6 +18,9 @@ import qualified DB.Storage.InMem.TreeIdx      as TI
 import           Language.Edh.EHI
 
 
+type BoSet = Set.HashSet Object
+
+
 type AscSort = Bool
 newtype IndexSpec = IndexSpec [(AttrKey, AscSort)]
   deriving (Eq)
