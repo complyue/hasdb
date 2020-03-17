@@ -291,8 +291,6 @@ class DataBack {
   # lastest finalized data file. all persistent CUD operations are replayed.
   method _replayHistory( intakeSink ) {
     for persistRecord from intakeSink do case persistRecord of {
-      nil -> { break }  # end of recorded history
-
       {( boClassName, eid, attrChgs )} -> {
         # db has the mounted DbApp as a super, resolving business classes
         # by name from there
