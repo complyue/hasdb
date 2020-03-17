@@ -146,7 +146,7 @@ class DataBack {
         this._settle_rel( bo, sb, attrKey, attrVal, sbRef )
 
         # encounter the new relationship
-        (attrKey, className(attrVal), sbRef.eid) => persistAttrs
+        ;(attrKey, className(attrVal), sbRef.eid) => persistAttrs
       }
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
@@ -156,7 +156,7 @@ class DataBack {
         }
 
         # encounter the new attribute value
-        (attrKey, attrVal) => persistAttrs
+        ;(attrKey, attrVal) => persistAttrs
       }
       # not to persist, treating as a transient attribute
       {#
@@ -244,8 +244,9 @@ class DataBack {
     this._dump_version += 1
 
     method _dumpBo( bo, sb ) {
-      if sb?_dumped_version == this._dump_version then
+      if sb?_dumped_version == this._dump_version then {
         return nil  # this bo already dumped to version
+      }
 
       persistAttrs = []
       for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
