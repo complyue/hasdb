@@ -138,7 +138,7 @@ class DataBack {
   method _settle_obj( bo, sb ) ai {
     boClass = constructor(bo)
     bocIndices = this._indices[ boClass ]
-    touchedIndices = {}  # collect touched global indices by attr
+    touchedIndices = {,}  # collect touched global indices by attr
     persistAttrs = []
     for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
       # referencing another business object, settle the relationship
@@ -151,8 +151,9 @@ class DataBack {
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
         # encounter touched index by this attr
-        case bocIndices |> nil &> bocIndices[ attrKey ] of { boi } -> {
-          touchedIndices[ boi ] = true
+        case bocIndices |> nil &> bocIndices[ attrKey ] of { bois } -> {
+          for boi from bois do
+            touchedIndices[ boi ] = true
         }
 
         # encounter the new attribute value
@@ -200,8 +201,9 @@ class DataBack {
     ;| hasReConRepr(attrVal) -> {
       # re-index to the global index if any touched
       case this._indices[ constructor(bo) ] of { bocIndices } -> {
-        case bocIndices[ attrKey ] of { boi } -> {
-          boi.(<-)(bo)
+        case bocIndices[ attrKey ] of { bois } -> {
+          for boi from bois do
+            boi.(<-)(bo)
         }
       }
 
@@ -359,8 +361,9 @@ class DataBack {
           # change of trivial attribute
           {( attrKey, attrVal )} -> {
             # encounter touched index by this attr
-            case bocIndices |> nil &> bocIndices[ attrKey ] of { boi } -> {
-              touchedIndices[ boi ] = true
+            case bocIndices |> nil &> bocIndices[ attrKey ] of { bois } -> {
+              for boi from bois do
+                touchedIndices[ boi ] = true
             }
 
             # update attr without magic
