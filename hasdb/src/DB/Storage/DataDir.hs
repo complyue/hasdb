@@ -12,6 +12,7 @@ import           System.Posix
 import qualified System.Posix.Files.ByteString as PB
 
 import           Control.Monad
+import           Control.Monad.Reader
 import           Control.Exception
 import           Control.Concurrent.STM
 
@@ -64,8 +65,8 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
     atomically $ publishEvent restoreOutlet nil -- signal end of stream
 
 
-streamEdhReprToDisk :: EventSink -> FilePath -> EventSink -> IO ()
-streamEdhReprToDisk !persitOutlet !dataFileFolder !sinkBaseDFD =
+streamEdhReprToDisk :: Context -> EventSink -> FilePath -> EventSink -> IO ()
+streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
   bracket openBaseFile (\(_, dfd) -> unless (dfd < 0) $ closeFd dfd)
     $ \(baseDFN, !baseDFD) -> do
         dbLaunchTimeStamp <- dataFileTimeStamp
@@ -91,30 +92,45 @@ streamEdhReprToDisk !persitOutlet !dataFileFolder !sinkBaseDFD =
               -- and `handleToFd` is especially needed here for its documented side-effect
               -- of flushing the write buf.
               bracket (fdToHandle wipFd) handleToFd $ \fileHndl -> do
+                txtVar <- newTVarIO (Nothing :: Maybe Text)
                 hSetBinaryMode fileHndl True
                 (subChan, _) <- atomically $ subscribeEvents persitOutlet
                 let
-                  pumpEvd = atomically (readTChan subChan) >>= \case
-                    EdhNil -> return ()
-                    -- TODO support SCN (System-Change-Number) or other means of checkpointing
-                    --      schema, e.g. periodically inserted delimiter timestamp. then the
-                    --      replay/restore can have such checkpoint based range selection.
-                    !evd   -> do
-                      let
-                        !payload =
-                          encodeUtf8 $ finishLine $ onSepLine $ edhValueStr evd
-                        !pktLen = B.length payload
-                      -- write packet header
-                      B.hPut fileHndl
-                        $  encodeUtf8
-                        $  T.pack
-                        $  "["
-                        <> show pktLen
-                        <> "#]"
-                      -- write packet payload
-                      B.hPut fileHndl payload
-                      -- keep pumping
-                      pumpEvd
+                  pumpEvd = do
+                    runEdhProgram' ctx $ do
+                      pgs <- ask
+                      contEdhSTM $ waitEdhSTM pgs (readTChan subChan) $ \case
+                        EdhNil -> -- end-of-stream reached
+                          writeTVar txtVar Nothing
+  -- TODO support SCN (System-Change-Number) or other means of checkpointing
+  --      schema, e.g. periodically inserted delimiter timestamp. then the
+  --      replay/restore can have such checkpoint based range selection.
+                        !evd ->
+                          runEdhProg pgs
+                            $ edhValueRepr evd
+                            $ \(OriginalValue evr _ _) -> case evr of
+                                EdhString evrs ->
+                                  contEdhSTM $ writeTVar txtVar $ Just evrs
+                                _ ->
+                                  error
+                                    "bug: edhValueRepr returned non-string in CPS"
+                    readTVarIO txtVar >>= \case
+                      Nothing   -> return () -- eos 
+                      Just !txt -> do
+                        let !payload =
+                              encodeUtf8 $ finishLine $ onSepLine $ txt
+                            !pktLen = B.length payload
+                        -- write packet header
+                        B.hPut fileHndl
+                          $  encodeUtf8
+                          $  T.pack
+                          $  "["
+                          <> show pktLen
+                          <> "#]"
+                        -- write packet payload
+                        B.hPut fileHndl payload
+                        -- keep pumping
+                        pumpEvd
                 pumpEvd
                 !dbShutdownTimeStamp <- dataFileTimeStamp
                 pubName              <- commitDataFile
