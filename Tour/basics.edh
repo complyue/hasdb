@@ -28,6 +28,10 @@ import * 'db'
         extends db.superBack()
       }
 
+      method __repr__ () {
+        'Person(name=' ++ this.name ++ ', age=' ++ this.age ++ ')'
+      }
+
     }
 
   }
@@ -79,6 +83,10 @@ import * 'db'
         )
       }
 
+      method __repr__ () {
+        'Depart(name=' ++ this.name ++ ')'
+      }
+
     }
 
     class WorkFor {
@@ -126,7 +134,8 @@ import * 'db'
         { d01 } -> { pass }
       }
 
-      runtime.info <| 'got devs: ' ++ d01.workers
+      for (ixk, workRel) from d01.workers.range() do 
+        runtime.info <| 'got dev ' ++ workRel.person ++ ' with salary ' ++ ixk
 
     }
   }

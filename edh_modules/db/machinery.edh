@@ -137,7 +137,7 @@ class DataBack {
   # in a tx process all attributes atm
   method _settle_obj( bo, sb ) ai {
     boClass = constructor(bo)
-    bocIndices = this._indices[ boClass ]
+    bocIndices = this._indices[ boClass ] |> None
     touchedIndices = {,}  # collect touched global indices by attr
     persistAttrs = []
     for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
@@ -151,7 +151,7 @@ class DataBack {
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
         # encounter touched index by this attr
-        case bocIndices |> nil &> bocIndices[ attrKey ] of { bois } -> {
+        case bocIndices &> bocIndices[ attrKey ] |> nil of { bois } -> {
           for boi from bois do
             touchedIndices[ boi ] = true
         }
@@ -324,23 +324,20 @@ class DataBack {
           error( 'bug: no SuperBack on existing bo' )
         }
 
-        bocIndices = this._indices[ boClass ]
+        bocIndices = this._indices[ boClass ] |> None
         touchedIndices = {}  # collect touched global indices by attr
-        deleted = false
-        for attrChg from attrChgs do case attrChg of {
-          nil -> {  # deletion
-            deleted = true
+        if null(attrChgs) then {  # deletion
             bo.delete()
-          }
-
+            continue
+        }
+        for attrChg from attrChgs do case attrChg of {
           # change of relationship
           {( attrKey, refClassName, eidRef )} -> {
             refClass = super?$refClassName
             if ClassType != type(refClass) then error (
               'Business class ' ++ refClassName ++ ' not available!'
             )
-            refExtent = this._extents[refClass]
-            case refExtent |> nil &> refExtent[eidRef] of {
+            case (refExtent = this._extents[refClass]) &> refExtent[eidRef] of {
               nil -> error( 'The business object ' ++ refClassName ++ '#' ++ eidRef 
                   ++ ' lost, referenced via ' ++ attrKey ++ ' by ' ++ boClassName 
                   ++ '#' ++ eid )
@@ -361,7 +358,7 @@ class DataBack {
           # change of trivial attribute
           {( attrKey, attrVal )} -> {
             # encounter touched index by this attr
-            case bocIndices |> nil &> bocIndices[ attrKey ] of { bois } -> {
+            case bocIndices &> bocIndices[ attrKey ] |> nil of { bois } -> {
               for boi from bois do
                 touchedIndices[ boi ] = true
             }
@@ -370,15 +367,15 @@ class DataBack {
             sb._boScope.put(attrKey: attrVal)
           }
 
-          error( 'bug: unsupported persistent attr chg pattern' )
+          error( 'bug: unsupported persistent attr chg pattern', 
+            type=type(attrChg), value=attrChg )
         }
-        if not deleted then {
-          # re-index into all touched global indices
-          for (boi, _) from touchedIndices do boi.(<-)(bo)
-        }
+        # re-index into all touched global indices
+        for (boi, _) from touchedIndices do boi.(<-)(bo)
       }
 
-      error( 'bug: unsupported persistent record pattern' )
+      error( 'bug: unsupported persistent record pattern' 
+        type=type(persistRecord), value=persistRecord )
     }
   }
 
@@ -474,7 +471,7 @@ class SuperBack {
   # delete this business object in persistence respect
   method delete() {
     boClass = constructor(that)
-    bocIndices = this._indices[ boClass ]
+    bocIndices = this._indices[ boClass ] |> None
     touchedIndices = {}  # collect touched global indices by attr
     for (attrKey, attrVal) from this._boScope.attrs() do case attrVal of {
       # referencing another business object, settle the relationship
@@ -484,7 +481,7 @@ class SuperBack {
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
         # encounter touched index by this attr
-        case bocIndices |> nil &> bocIndices[ attrKey ] of { boi } -> {
+        case bocIndices &> bocIndices[ attrKey ] |> nil of { boi } -> {
           touchedIndices[ boi ] = true
         }
       }
@@ -495,6 +492,8 @@ class SuperBack {
     }
     # throw away from all touched global indices
     for (boi, _) from touchedIndices do boi.(^*)(that)
+    # persist the log
+    this.db.persistOutlet <- (className(that), this.eid, ())
   }
 
 }
