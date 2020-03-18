@@ -55,9 +55,8 @@ newBoProc !argsSndr !exit =
       createEdhObject cls [] $ \(OriginalValue boVal _ _) -> case boVal of
         EdhObject !bo -> do
           pgs <- ask
-          let world = contextWorld $ edh'context pgs
           contEdhSTM $ do
-            boScope <- mkScopeWrapper world $ objectScope bo
+            boScope <- mkScopeWrapper (edh'context pgs) $ objectScope bo
             modifyTVar' (objSupers bo) (sbObj :)
             changeEntityAttr pgs (objEntity sbObj) (AttrByName "_boScope")
               $ EdhObject boScope
