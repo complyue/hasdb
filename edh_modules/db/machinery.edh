@@ -179,6 +179,7 @@ class DataBack {
     }
 
     # index into all touched global indices
+    ;-1<| bo ++ ' touched ind: ' ++ touchedIndices
     for (boi, _) from touchedIndices do boi.(<-)(bo)
 
     # persist all attributes of the new business object
@@ -439,6 +440,8 @@ class SuperBack {
       'bug: more than 1 business objects per SuperBack instance'
     )
     this._boScope = boScope
+
+    case that?__db_init__ of { _ } -> that.__db_init__()
 
     # settle new object
     this.db._settle_obj( that, this )

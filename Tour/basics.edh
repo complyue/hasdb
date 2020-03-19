@@ -69,7 +69,9 @@ import * 'db'
 
         # this actually creates this business object in persistence respect
         extends db.superBack()
+      }
 
+      method __db_init__ () {
         # create a kindex for persons working for this dept, sorted by salary
         super.createKinIndex(
 # target attr name, will be available as super attr
@@ -122,20 +124,20 @@ import * 'db'
     method run() {
 
       case this.deptByName[ 'Dev' ] of {
-        nil -> {
-          d01 = Depart('Dev')
-
-          p01 = Person( name = 'Compl', age = 41 )
-          p02 = Person( name = 'Jim', age = 11 )
-
-          WorkFor( p01, d01, 12345 )
-          WorkFor( p02, d01, 54321 )
-        }
         { d01 } -> { pass }
+
+        d01 = Depart('Dev')
+
+        p01 = Person( name = 'Compl', age = 41 )
+        p02 = Person( name = 'Jim', age = 11 )
+
+        WorkFor( p01, d01, 12345 )
+        WorkFor( p02, d01, 54321 )
       }
 
       for (ixk, workRel) from d01.workers.range() do 
-        runtime.info <| 'got dev ' ++ workRel.person ++ ' with salary ' ++ ixk
+        runtime.info <| 'got dev ' ++ workRel.person ++ 
+          ' with sorting order ' ++ ixk
 
     }
   }

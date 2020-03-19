@@ -48,6 +48,7 @@ classNameProc !argsSndr !exit = do
 
 
 -- | utility newBo(boClass, sbObj)
+-- this performs non-standard business object construction
 newBoProc :: EdhProcedure
 newBoProc !argsSndr !exit =
   packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) -> case args of
@@ -60,7 +61,17 @@ newBoProc !argsSndr !exit =
             modifyTVar' (objSupers bo) (sbObj :)
             changeEntityAttr pgs (objEntity sbObj) (AttrByName "_boScope")
               $ EdhObject boScope
-            exitEdhSTM pgs exit $ EdhObject bo
+            lookupEntityAttr pgs (objEntity bo) (AttrByName "__db_init__")
+              >>= \case
+                    EdhNil -> exitEdhSTM pgs exit $ EdhObject bo
+                    EdhMethod !mth'proc ->
+                      runEdhProg pgs
+                        $ callEdhMethod [] bo mth'proc Nothing
+                        $ \_ -> contEdhSTM $ exitEdhSTM pgs exit $ EdhObject bo
+                    !badMth ->
+                      throwEdhSTM pgs EvalError
+                        $  "Invalid __db_init__() method type: "
+                        <> T.pack (show $ edhTypeOf badMth)
         _ -> error "bug: createEdhObject returned non-object"
     _ -> throwEdh EvalError "Invalid arg to `newBo`"
 
@@ -171,11 +182,21 @@ boiHostCtor !pgsCtor _ !obs = do
               $  "Invalid unique arg value type: "
               <> T.pack (show $ edhTypeOf v)
         spec@(IndexSpec spec') <- parseIndexSpec pgs args
+        let specStr = T.pack $ show spec
         modifyTVar' obs
           $ Map.insert (AttrByName "unique") (EdhBool uniqIdx)
-          . Map.insert (AttrByName "spec") (EdhString $ T.pack $ show spec)
+          . Map.insert (AttrByName "spec") (EdhString specStr)
           . Map.insert (AttrByName "keys")
                        (EdhTuple $ attrKeyValue . fst <$> spec')
+          . Map.insert
+              (AttrByName "__repr__")
+              (  EdhString
+              $  "BoIndex("
+              <> specStr
+              <> ", unique="
+              <> (if uniqIdx then "true" else "false")
+              <> ")"
+              )
         let boi = if uniqIdx
               then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
               else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty
