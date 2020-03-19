@@ -41,7 +41,8 @@ main = do
     -- install the host module
     void $ installEdhModule world "db/ehi" $ \pgs modu -> do
 
-      let moduScope = objectScope modu
+      let ctx       = edh'context pgs
+          moduScope = objectScope ctx modu
 
       !dbArts <-
         sequence

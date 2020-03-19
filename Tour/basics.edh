@@ -4,7 +4,7 @@ import * 'db'
 
 {
 
-  # a class in Edh can serve as a parameteric *module*, with nested classes,
+  # an object in Edh can serve as a parameteric *module*, with nested classes,
   # methods and/or other procedures, those to be `import`ed into another app/lib
   # instance's scope.
   class DbLib {
