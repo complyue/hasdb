@@ -101,7 +101,7 @@ class DataBack {
 
   # all global indices created. a hierarchy of dicts by class then by key attr,
   # to a list of index entries for indices having the key attr involved.
-  _indices = {,}
+  _indices = {}
 
   # this method is normally called as the right-hand-expr of an assignment
   # (to an attribute of the db app), so it tends to run within a tx already,
@@ -109,7 +109,7 @@ class DataBack {
   method createIndex( boClass, indexSpec, unique=false ) ai {
     idx = BoIndex( indexSpec, unique=unique, )
     bocIndices = this._indices[boClass] |>    (
-                 this._indices[boClass] = {,} )
+                 this._indices[boClass] = {} )
     for keyAttr from idx.keys do idx => (
       bocIndices[ keyAttr ] |>   (
       bocIndices[ keyAttr ] = [] )
@@ -124,7 +124,7 @@ class DataBack {
 
   # reference all live business objects by eid, with each business 
   # class having a separate dict in `_extents`
-  _extents = {,}
+  _extents = {}
 
   # the version number that all live objects have been dumped
   _dump_version = 0
@@ -138,7 +138,7 @@ class DataBack {
   method _settle_obj( bo, sb ) ai {
     boClass = constructor(bo)
     bocIndices = this._indices[ boClass ] |> None
-    touchedIndices = {,}  # collect touched global indices by attr
+    touchedIndices = {}  # collect touched global indices by attr
     persistAttrs = []
     for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
       # referencing another business object, settle the relationship
@@ -308,7 +308,7 @@ class DataBack {
           this._last_eid = eid
 
         bocExtent = this._extents[boClass] |>    (
-                    this._extents[boClass] = {,} )
+                    this._extents[boClass] = {} )
 
         case bo = bocExtent[eid] of {
           nil -> {
@@ -390,7 +390,7 @@ class SuperBack {
   
   # informed reverse references, to referencers of `that` business object,
   # keyed by a pair of <rel-class>:<ref-attr>, then by the key attrs.
-  _kins = {,}
+  _kins = {}
 
   # create an index for sorted kins, that automatically maintained by the data
   # back.
