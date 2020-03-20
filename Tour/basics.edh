@@ -1,6 +1,9 @@
 
 import * 'db'
 
+# name the interactive module so we can assign various things to it in deeply
+# nested procedures
+adhoc := this
 
 {
 
@@ -116,6 +119,10 @@ import * 'db'
       this.deptByName = db.createIndex( Depart, expr (
         name:ASC,
        ), unique=true )
+
+# for debug introspection
+adhoc.dba = this
+adhoc.db = that
     }
 
     # this is the *main* method of the application, all transactional changes
@@ -135,8 +142,9 @@ import * 'db'
         WorkFor( p02, d01, 54321 )
       }
 
+      runtime.info <| 'got dev ' ++ d01
       for (ixk, workRel) from d01.workers.range() do 
-        runtime.info <| 'got dev ' ++ workRel.person ++ 
+        runtime.info <| 'got workers ' ++ workRel.person ++ 
           ' with sorting order ' ++ ixk
 
     }

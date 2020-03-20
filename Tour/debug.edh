@@ -1,0 +1,28 @@
+
+import * 'db'
+
+import * 'db/ehi'
+
+{
+
+  class DbApp {
+
+  }
+
+  app = DbApp()
+
+}
+
+{
+{#
+  case DataBack(sink, app) of { db } -> {
+    ;-1<| 'got ' ++ db
+    # error('got', db=db)
+  }
+
+  #error('done')
+
+#}
+}
+
+db = DataBack(sink, app)

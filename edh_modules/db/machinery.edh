@@ -146,7 +146,7 @@ class DataBack {
         this._settle_rel( bo, sb, attrKey, attrVal, sbRef )
 
         # encounter the new relationship
-        ;(attrKey, className(attrVal), sbRef.eid) => persistAttrs
+        ;( attrKey, className(attrVal), sbRef.eid ) => persistAttrs
       }
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
@@ -157,7 +157,7 @@ class DataBack {
         }
 
         # encounter the new attribute value
-        ;(attrKey, attrVal) => persistAttrs
+        ;( attrKey, attrVal ) => persistAttrs
       }
       # not to persist, treating as a transient attribute
       {#
@@ -179,7 +179,6 @@ class DataBack {
     }
 
     # index into all touched global indices
-    ;-1<| bo ++ ' touched ind: ' ++ touchedIndices
     for (boi, _) from touchedIndices do boi.(<-)(bo)
 
     # persist all attributes of the new business object
@@ -259,12 +258,12 @@ class DataBack {
           # being restored, in future replays of history
           _dumpBo( attrVal, sbRef )
           # record this ref attr
-          (attrKey, className(attrVal), sbRef.eid) => persistAttrs
+          ;( attrKey, className(attrVal), sbRef.eid ) => persistAttrs
         }
         # handle trivially representable values, including `nil`
         ;| hasReConRepr(attrVal) -> {
           # encounter the new attribute value
-          (attrKey, attrVal) => persistAttrs
+          ;( attrKey, attrVal ) => persistAttrs
         }
         # not to persist, treating as a transient attribute
         {#
@@ -303,7 +302,7 @@ class DataBack {
           'Business class ' ++ boClassName ++ ' not available!'
         )
 
-        # adapt to historical largest eid
+        # admit historical largest eid, will not be needed in uuid schema
         ai if eid > this._last_eid then
           this._last_eid = eid
 
@@ -331,6 +330,7 @@ class DataBack {
             bo.delete()
             continue
         }
+        newReferees = []
         for attrChg from attrChgs do case attrChg of {
           # change of relationship
           {( attrKey, refClassName, eidRef )} -> {
@@ -349,10 +349,9 @@ class DataBack {
             case attrValOld = sb._boScope.get(attrKey) of {{ SuperBack: sbRefOld }} ->
               this._cleanup_rel( bo, sb, attrKey, attrValOld, sbRefOld)
 
-            # update ref attr of this relationship without magic
-            case boRef of {{ DataBack: sbRef }} -> {
-              sb._boScope.put(attrKey: boRef)
-              this._settle_rel( bo, sb, attrKey, boRef, sbRef )
+            # remember this new referee to connect
+            case boRef of {{ SuperBack: sbRef }} -> {
+              pkargs( attrKey, boRef, sbRef ) => newReferees
             }
           }
 
@@ -370,6 +369,14 @@ class DataBack {
 
           error( 'bug: unsupported persistent attr chg pattern', 
             type=type(attrChg), value=attrChg )
+        }
+        # settle the relationship only after all attr updates are applied, or
+        # the kin indices at referees might capture wrong index keys
+        for ( attrKey, boRef, sbRef ) from newReferees do {
+          # update ref attr of this relationship without magic
+          sb._boScope.put(attrKey: boRef)
+          # settle the relationship
+          this._settle_rel( bo, sb, attrKey, boRef, sbRef )
         }
         # re-index into all touched global indices
         for (boi, _) from touchedIndices do boi.(<-)(bo)
