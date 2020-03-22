@@ -28,14 +28,14 @@ inputSettings = Settings { complete       = \(_left, _right) -> return ("", [])
 main :: IO ()
 main = do
 
-  -- todo create a logger coop'ing with haskeline specifically ?
-  logger <- defaultEdhLogger
+  -- todo create a runtime with logger coop'ing with haskeline specifically ?
+  runtime <- defaultEdhRuntime
 
   runInputT inputSettings $ do
 
     outputStrLn ">> Haskell Data Back <<"
 
-    world <- createEdhWorld logger
+    world <- createEdhWorld runtime
     installEdhBatteries world
 
     -- install the host module
@@ -84,4 +84,6 @@ main = do
 
     modu <- createEdhModule world "<interactive>" "<adhoc>"
     doLoop world modu
+
+  flushRuntimeLogs runtime
 

@@ -24,21 +24,19 @@ import           DB.Storage.InMem
 
 -- | utility className(*args,**kwargs)
 classNameProc :: EdhProcedure
-classNameProc !argsSndr !exit = do
+classNameProc (ArgsPack !args !kwargs) !exit = do
   !pgs <- ask
   let callerCtx   = edh'context pgs
       callerScope = contextScope callerCtx
-  packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) ->
-    let !argsCls = classNameOf <$> args
-    in  if Map.null kwargs
-          then case argsCls of
-            [] ->
-              exitEdhProc exit (EdhClass $ objClass $ thisObject callerScope)
-            [t] -> exitEdhProc exit t
-            _   -> exitEdhProc exit (EdhTuple argsCls)
-          else exitEdhProc
-            exit
-            (EdhArgsPack $ ArgsPack argsCls $ Map.map classNameOf kwargs)
+      !argsCls    = classNameOf <$> args
+  if Map.null kwargs
+    then case argsCls of
+      []  -> exitEdhProc exit (EdhClass $ objClass $ thisObject callerScope)
+      [t] -> exitEdhProc exit t
+      _   -> exitEdhProc exit (EdhTuple argsCls)
+    else exitEdhProc
+      exit
+      (EdhArgsPack $ ArgsPack argsCls $ Map.map classNameOf kwargs)
  where
   classNameOf :: EdhValue -> EdhValue
   classNameOf (EdhClass (ProcDefi _ _ (ProcDecl !cn _ _))) = EdhString cn
@@ -50,10 +48,10 @@ classNameProc !argsSndr !exit = do
 -- | utility newBo(boClass, sbObj)
 -- this performs non-standard business object construction
 newBoProc :: EdhProcedure
-newBoProc !argsSndr !exit =
-  packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) -> case args of
-    [EdhClass !cls, EdhObject !sbObj] | Map.null kwargs ->
-      createEdhObject cls [] $ \(OriginalValue boVal _ _) -> case boVal of
+newBoProc (ArgsPack !args !kwargs) !exit = case args of
+  [EdhClass !cls, EdhObject !sbObj] | Map.null kwargs ->
+    createEdhObject cls (ArgsPack [] Map.empty) $ \(OriginalValue boVal _ _) ->
+      case boVal of
         EdhObject !bo -> do
           pgs <- ask
           let ctx = edh'context pgs
@@ -67,14 +65,14 @@ newBoProc !argsSndr !exit =
                     EdhNil -> exitEdhSTM pgs exit $ EdhObject bo
                     EdhMethod !mth'proc ->
                       runEdhProg pgs
-                        $ callEdhMethod [] bo mth'proc Nothing
+                        $ callEdhMethod bo mth'proc (ArgsPack [] Map.empty)
                         $ \_ -> contEdhSTM $ exitEdhSTM pgs exit $ EdhObject bo
                     !badMth ->
                       throwEdhSTM pgs EvalError
                         $  "Invalid __db_init__() method type: "
                         <> T.pack (show $ edhTypeOf badMth)
         _ -> error "bug: createEdhObject returned non-object"
-    _ -> throwEdh EvalError "Invalid arg to `newBo`"
+  _ -> throwEdh EvalError "Invalid arg to `newBo`"
 
 
 -- | utility streamToDisk(persistOutlet, dataFileFolder, sinkBaseDFD)
@@ -83,9 +81,9 @@ newBoProc !argsSndr !exit =
 -- db shutdown, or other Edh threads will be terminated, including
 -- the one running the db app.
 streamToDiskProc :: EdhProcedure
-streamToDiskProc !argsSndr !exit = do
+streamToDiskProc (ArgsPack !args !kwargs) !exit = do
   pgs <- ask
-  packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) -> case args of
+  case args of
     [EdhSink !persistOutlet, EdhString !dataFileFolder, EdhSink !sinkBaseDFD]
       | Map.null kwargs -> edhWaitIO exit $ do
         -- not to use `unsafeIOToSTM` here, despite it being retry prone,
@@ -99,9 +97,9 @@ streamToDiskProc !argsSndr !exit = do
 
 -- | utility streamFromDisk(restoreOutlet, baseDFD)
 streamFromDiskProc :: EdhProcedure
-streamFromDiskProc !argsSndr !exit = do
+streamFromDiskProc (ArgsPack !args !kwargs) !exit = do
   pgs <- ask
-  packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) -> case args of
+  case args of
     [EdhSink !restoreOutlet, EdhDecimal baseDFD] | Map.null kwargs ->
       -- not to use `unsafeIOToSTM` here, despite it being retry prone,
       -- nested `atomically` is prohibited as well.
@@ -116,7 +114,7 @@ streamFromDiskProc !argsSndr !exit = do
 -- | host constructor BoIndex( indexSpec, unique=false )
 boiHostCtor
   :: EdhProgState
-  -> ArgsSender  -- ctor args, if __init__() is provided, will go there too
+  -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
   -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
   -> STM ()
 boiHostCtor !pgsCtor _ !obs = do
@@ -148,7 +146,7 @@ boiHostCtor !pgsCtor _ !obs = do
         , PackReceiver [RecvArg "keyValues" Nothing Nothing]
         )
       , ( "groups"
-        , EdhGenrDef
+        , EdhGnrtor
         , boiGroupsOrRangeProc listBoIndexGroups
         , PackReceiver
           [ RecvArg "min" Nothing (Just (GodSendExpr edhNone))
@@ -156,7 +154,7 @@ boiHostCtor !pgsCtor _ !obs = do
           ]
         )
       , ( "range"
-        , EdhGenrDef
+        , EdhGnrtor
         , boiGroupsOrRangeProc listBoIndexRange
         , PackReceiver
           [ RecvArg "min" Nothing (Just (GodSendExpr edhNone))
@@ -170,44 +168,43 @@ boiHostCtor !pgsCtor _ !obs = do
  where
 
   __init__ :: EdhProcedure
-  __init__ !argsSndr !exit =
-    packEdhArgs argsSndr $ \(ArgsPack !args !kwargs) -> do
-      pgs <- ask
-      let this = thisObject $ contextScope $ edh'context pgs
-      contEdhSTM $ do
-        uniqIdx <- case Map.lookup "unique" kwargs of
-          Nothing          -> return False
-          Just (EdhBool b) -> return b
-          Just v ->
-            throwEdhSTM pgs EvalError
-              $  "Invalid unique arg value type: "
-              <> T.pack (show $ edhTypeOf v)
-        spec@(IndexSpec spec') <- parseIndexSpec pgs args
-        let specStr = T.pack $ show spec
-        modifyTVar' obs
-          $ Map.insert (AttrByName "unique") (EdhBool uniqIdx)
-          . Map.insert (AttrByName "spec") (EdhString specStr)
-          . Map.insert (AttrByName "keys")
-                       (EdhTuple $ attrKeyValue . fst <$> spec')
-          . Map.insert
-              (AttrByName "__repr__")
-              (  EdhString
-              $  "BoIndex("
-              <> specStr
-              <> ", unique="
-              <> (if uniqIdx then "true" else "false")
-              <> ")"
-              )
-        let boi = if uniqIdx
-              then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
-              else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty
-        boiVar <- newTMVar boi
-        writeTVar (entity'store $ objEntity this) $ toDyn boiVar
-        exitEdhSTM pgs exit $ EdhObject this
+  __init__ (ArgsPack !args !kwargs) !exit = do
+    pgs <- ask
+    let this = thisObject $ contextScope $ edh'context pgs
+    contEdhSTM $ do
+      uniqIdx <- case Map.lookup "unique" kwargs of
+        Nothing          -> return False
+        Just (EdhBool b) -> return b
+        Just v ->
+          throwEdhSTM pgs EvalError
+            $  "Invalid unique arg value type: "
+            <> T.pack (show $ edhTypeOf v)
+      spec@(IndexSpec spec') <- parseIndexSpec pgs args
+      let specStr = T.pack $ show spec
+      modifyTVar' obs
+        $ Map.insert (AttrByName "unique") (EdhBool uniqIdx)
+        . Map.insert (AttrByName "spec") (EdhString specStr)
+        . Map.insert (AttrByName "keys")
+                     (EdhTuple $ attrKeyValue . fst <$> spec')
+        . Map.insert
+            (AttrByName "__repr__")
+            (  EdhString
+            $  "BoIndex("
+            <> specStr
+            <> ", unique="
+            <> (if uniqIdx then "true" else "false")
+            <> ")"
+            )
+      let boi = if uniqIdx
+            then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
+            else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty
+      boiVar <- newTMVar boi
+      writeTVar (entity'store $ objEntity this) $ toDyn boiVar
+      exitEdhSTM pgs exit $ EdhObject this
 
   boiReindexProc :: EdhProcedure
-  boiReindexProc !argsSndr !exit = packEdhArgs argsSndr $ \case
-    (ArgsPack [EdhObject !bo] !kwargs) | Map.null kwargs -> do
+  boiReindexProc (ArgsPack !args !kwargs) !exit = case args of
+    [EdhObject !bo] | Map.null kwargs -> do
       pgs <- ask
       let this = thisObject $ contextScope $ edh'context pgs
           es   = entity'store $ objEntity this
@@ -226,8 +223,8 @@ boiHostCtor !pgsCtor _ !obs = do
     _ -> throwEdh EvalError "Invalid args to boiReindexProc"
 
   boiThrowAwayProc :: EdhProcedure
-  boiThrowAwayProc !argsSndr !exit = packEdhArgs argsSndr $ \case
-    (ArgsPack [EdhObject !bo] !kwargs) | Map.null kwargs -> do
+  boiThrowAwayProc (ArgsPack !args !kwargs) !exit = case args of
+    [EdhObject !bo] | Map.null kwargs -> do
       pgs <- ask
       let this = thisObject $ contextScope $ edh'context pgs
           es   = entity'store $ objEntity this
@@ -246,8 +243,8 @@ boiHostCtor !pgsCtor _ !obs = do
     _ -> throwEdh EvalError "Invalid args to boiThrowAwayProc"
 
   boiLookupProc :: EdhProcedure
-  boiLookupProc !argsSndr !exit = packEdhArgs argsSndr $ \case
-    (ArgsPack [keyValues] !kwargs) | Map.null kwargs -> do
+  boiLookupProc (ArgsPack !args !kwargs) !exit = case args of
+    [keyValues] | Map.null kwargs -> do
       pgs <- ask
       let this = thisObject $ contextScope $ edh'context pgs
           es   = entity'store $ objEntity this
@@ -274,13 +271,13 @@ boiHostCtor !pgsCtor _ !obs = do
        -> STM [(IndexKey, EdhValue)]
        )
     -> EdhProcedure
-  boiGroupsOrRangeProc fn !argsSndr !exit = do
+  boiGroupsOrRangeProc fn !apk !exit = do
     pgs <- ask
     let this = thisObject $ contextScope $ edh'context pgs
         es   = entity'store $ objEntity this
     case generatorCaller $ edh'context pgs of
       Nothing -> throwEdh EvalError "Can only be called as generator"
-      Just (!pgs', !iter'cb) -> packEdhArgs argsSndr $ \apk ->
+      Just (!pgs', !iter'cb) -> do
         let
           yieldResult :: [(IndexKey, EdhValue)] -> STM ()
           yieldResult [] = return ()
@@ -291,24 +288,23 @@ boiHostCtor !pgsCtor _ !obs = do
                     (ArgsPack [edhValueOfIndexKey ik, noneNil v] Map.empty)
                   )
               $ \_ -> yieldResult rest
-        in
-          case parseIdxRng apk of
-            Left argsErr ->
-              throwEdh EvalError $ argsErr <> " for boiGroupsOrRangeProc"
-            Right (minKey, maxKey) -> contEdhSTM $ do
-              esd <- readTVar es
-              case fromDynamic esd of
-                Nothing ->
-                  throwEdhSTM pgs EvalError
-                    $  "bug: this is not a boi : "
-                    <> T.pack (show esd)
-                Just (boiVar :: TMVar BoIndex) -> do
-                  boi        <- readTMVar boiVar
-                  minKeyVals <- edhIdxKeyVals pgs minKey
-                  maxKeyVals <- edhIdxKeyVals pgs maxKey
-                  result     <- fn boi minKeyVals maxKeyVals
-                  yieldResult result
-                  exitEdhSTM pgs exit nil
+        case parseIdxRng apk of
+          Left argsErr ->
+            throwEdh EvalError $ argsErr <> " for boiGroupsOrRangeProc"
+          Right (minKey, maxKey) -> contEdhSTM $ do
+            esd <- readTVar es
+            case fromDynamic esd of
+              Nothing ->
+                throwEdhSTM pgs EvalError
+                  $  "bug: this is not a boi : "
+                  <> T.pack (show esd)
+              Just (boiVar :: TMVar BoIndex) -> do
+                boi        <- readTMVar boiVar
+                minKeyVals <- edhIdxKeyVals pgs minKey
+                maxKeyVals <- edhIdxKeyVals pgs maxKey
+                result     <- fn boi minKeyVals maxKeyVals
+                yieldResult result
+                exitEdhSTM pgs exit nil
 
 
 type IdxRng = (EdhValue, EdhValue)
@@ -328,7 +324,7 @@ parseIdxRng =
 -- | host constructor BoSet()
 bosHostCtor
   :: EdhProgState
-  -> ArgsSender  -- ctor args, if __init__() is provided, will go there too
+  -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
   -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
   -> STM ()
 bosHostCtor !pgsCtor _ !obs = do
@@ -349,7 +345,7 @@ bosHostCtor !pgsCtor _ !obs = do
         , bosThrowAwayProc
         , PackReceiver [RecvArg "bo" Nothing Nothing]
         )
-      , ("all", EdhGenrDef, bosAllProc, PackReceiver [])
+      , ("all", EdhGnrtor, bosAllProc, PackReceiver [])
       ]
     ]
   writeTVar obs $ Map.fromList methods
@@ -357,8 +353,8 @@ bosHostCtor !pgsCtor _ !obs = do
  where
 
   bosAddProc :: EdhProcedure
-  bosAddProc !argsSndr !exit = packEdhArgs argsSndr $ \case
-    (ArgsPack [EdhObject !bo] !kwargs) | Map.null kwargs -> do
+  bosAddProc (ArgsPack !args !kwargs) !exit = case args of
+    [EdhObject !bo] | Map.null kwargs -> do
       pgs <- ask
       let this = thisObject $ contextScope $ edh'context pgs
           es   = entity'store $ objEntity this
@@ -375,8 +371,8 @@ bosHostCtor !pgsCtor _ !obs = do
     _ -> throwEdh EvalError "Invalid args to bosAddProc"
 
   bosThrowAwayProc :: EdhProcedure
-  bosThrowAwayProc !argsSndr !exit = packEdhArgs argsSndr $ \case
-    (ArgsPack [EdhObject !bo] !kwargs) | Map.null kwargs -> do
+  bosThrowAwayProc (ArgsPack !args !kwargs) !exit = case args of
+    [EdhObject !bo] | Map.null kwargs -> do
       pgs <- ask
       let this = thisObject $ contextScope $ edh'context pgs
           es   = entity'store $ objEntity this
