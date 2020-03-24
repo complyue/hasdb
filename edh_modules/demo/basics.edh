@@ -1,0 +1,152 @@
+
+{
+
+  # an object in Edh can serve as a parameteric *module*, with nested classes,
+  # methods and/or other procedures, those to be `import`ed into another app/lib
+  # instance's scope.
+  class DbLib {
+
+    # an `__init__()` method if defined manifests the arguments to construct
+    # instances of the enclosing class (procedure)
+    #
+    # requires an effective `DataBack` instance for each instance of this lib
+    method __init__ (db as this.db) pass
+
+    class Person {
+
+      method __init__(
+        name as this.name, 
+        age as this.age, 
+      ) {
+
+        # don't do the `extends` in the class procedure, that'll confuse 
+        # DataBack when instances are restored by history replay, in which
+        # case a `SuperBack` is added as a super, automatically.
+        extends db.superBack()
+      }
+
+      method __repr__ () {
+        'Person(name=' ++ this.name ++ ', age=' ++ this.age ++ ')'
+      }
+
+    }
+
+  }
+
+}
+
+
+{
+
+  class DbApp {
+
+    # the effective `DataBack` instance for this app.
+    #
+    # will be assigned during `bootstrap()` method, which is called from the
+    # effective `DataBack` instance, after this app instance is passed to
+    # `runDbApp()`
+    db = nil
+
+    # a business object class, should `extends db.superBack()` from its 
+    # `__init__()` method, for the business object instances of it to be
+    # persisted by the effective `DataBack`.
+    #
+    # NOTE during history replay, when persistent objects are restored from
+    #      the backing storage, the `__init__()` method will NOT be called
+    #      as in normal cases after the class procedure is called against
+    #      the new instance. so as `extends db.superBack()` carries the
+    #      persistent-object-creation semantic, it should be written in 
+    #      the `__init__()` method instead of in the class procedure.
+    class Depart {
+
+      method __init__(
+        name as this.name,
+      ) {
+        this.headcount = 30
+
+        # this actually creates this business object in persistence respect
+        extends db.superBack()
+      }
+
+      method __db_init__ () {
+        # create a kindex for persons working for this dept, sorted by salary
+        super.createKinIndex(
+# target attr name, will be available as super attr
+          'workers',
+# business class as the relationship
+          WorkFor,
+# attr key on the relationship bo whose value is a reference to this bo
+          'depart',
+# key attrs, descending sort by salary
+          expr ( salary:DESC, ),
+        )
+      }
+
+      method __repr__ () {
+        'Depart(name=' ++ this.name ++ ')'
+      }
+
+    }
+
+    class WorkFor {
+      method __init__(
+        person as this.person,
+        depart as this.depart,
+        salary as this.salary,
+      ) {
+        extends db.superBack()
+      }
+    }
+
+    # this method is called before existing back data from the disk file is
+    # restored by replaying history, machinery necessary for history replay
+    # needs to be setup by this method.
+    method bootstrap() {
+      # `DataBack` instance will put `this` App as its first super,
+      # `run()` is called against the db instance, so `that` here is
+      # the actual `DataBack` instance.
+      this.db = that
+
+      # import some classes from a lib parameterized with current db instance.
+      import * DbLib(that)
+
+      this.deptByName = db.createIndex( Depart, expr (
+        name:ASC,
+       ), unique=true )
+    }
+
+    # this is the *main* method of the application, all transactional changes
+    # are backed to disk file during the course of this method running.
+    # once this method returns, the db is shutdown.
+    method run() {
+
+      case this.deptByName[ 'Dev' ] of {
+        { d01 } -> { pass }
+
+        d01 = Depart('Dev')
+
+        p01 = Person( name = 'Compl', age = 41 )
+        p02 = Person( name = 'Jim', age = 11 )
+
+        WorkFor( p01, d01, 12345 )
+        WorkFor( p02, d01, 54321 )
+      }
+
+      runtime.print( 'got dev ' ++ d01 )
+      for (ixk, workRel) from d01.workers.range() do 
+        runtime.print( 'got workers ' ++ workRel.person ++
+          ' with sorting order ' ++ ixk)
+
+      shutdown := 'shtudown'  # define the shutdown command
+      for cmd from runtime.readCommands(ps1="(app)Đ: ", ps2="(app)Đ| ")
+       do case cmd of {
+        shutdown -> { break }
+        nil -> { continue }
+        runtime.print( cmd )
+      }
+      runtime.print( 'DB app shutting down ...' )
+
+    }
+  }
+
+}

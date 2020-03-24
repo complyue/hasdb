@@ -46,7 +46,6 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
        atomically $ publishEvent restoreOutlet nil
   else restoreLatest
  where
-  world         = contextWorld ctx
   restoreLatest = bracket (fdToHandle dfd) handleToFd $ \fileHndl -> do
     -- seems that closing an Fd will fail hard after `fdToHandle` but before
     -- `handleToFd`. may be an undocumented side-effect ?
@@ -55,12 +54,12 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
       "" -> do
         let !evs = decodeUtf8 payload
         -- parse & eval evs to Edh value, then post to restoreOutlet 
-        parseEdhSource world "<edf>" evs >>= \case
-          Left  err   -> throwIO err
-          Right stmts -> do
-            runEdhProgram' ctx $ evalBlock stmts $ \(OriginalValue evd _ _) ->
+        void
+          $ runEdhProgram' ctx
+          $ evalEdh "<edf>" evs
+          $ \(OriginalValue evd _ _) ->
               contEdhSTM $ publishEvent restoreOutlet evd
-            return False
+        return False
       _ -> throwIO $ userError $ "invalid packet directive: " <> T.unpack dir
     atomically $ publishEvent restoreOutlet nil -- signal end of stream
 
@@ -97,7 +96,7 @@ streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
                 (subChan, _) <- atomically $ subscribeEvents persitOutlet
                 let
                   pumpEvd = do
-                    runEdhProgram' ctx $ do
+                    void $ runEdhProgram' ctx $ do
                       pgs <- ask
                       contEdhSTM $ waitEdhSTM pgs (readTChan subChan) $ \case
                         EdhNil -> -- end-of-stream reached
