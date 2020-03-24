@@ -111,16 +111,15 @@ class DataBack {
   # this method is normally called as the right-hand-expr of an assignment
   # (to an attribute of the db app), so it tends to run within a tx already,
   # we mark it with `ai` for extra certain.
-  method createIndex( indexKey, boClass, indexSpec, unique=false ) ai {
-    # TODO bake the index key into boi, let it report errors with the key
-    idx = BoIndex( indexSpec, unique=unique, )
+  method createIndex( idxAttr, boClass, indexSpec, unique=false ) ai {
+    idx = BoIndex( indexSpec, unique=unique, name=''++idxAttr++'@'++boClass )
     bocIndices = this._indices[boClass] |>    (
                  this._indices[boClass] = {} )
     for keyAttr from idx.keys do idx => (
       bocIndices[ keyAttr ] |>   (
       bocIndices[ keyAttr ] = [] )
     )
-    this$indexKey = idx
+    this$idxAttr = idx
     nil  # return nothing
   }
 
@@ -443,6 +442,7 @@ class SuperBack {
     this._kins[ relClass:relAttr ] = (
       # will be available from `that` as super attr
       this$kinAttr = ks
+      nil  # return nothing
     )
   }
 

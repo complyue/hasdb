@@ -181,19 +181,23 @@ boiHostCtor !pgsCtor _ !obs = do
             <> T.pack (show $ edhTypeOf v)
       spec@(IndexSpec spec') <- parseIndexSpec pgs args
       let specStr = T.pack $ show spec
+          idxName = case Map.lookup "name" kwargs of
+            Nothing                 -> "<index>"
+            Just (EdhString keyStr) -> keyStr
+            Just v                  -> T.pack $ show v
       modifyTVar' obs
         $ Map.insert (AttrByName "unique") (EdhBool uniqIdx)
         . Map.insert (AttrByName "spec") (EdhString specStr)
         . Map.insert (AttrByName "keys")
                      (EdhTuple $ attrKeyValue . fst <$> spec')
+        . Map.insert (AttrByName "name") (EdhString idxName)
         . Map.insert
             (AttrByName "__repr__")
             (  EdhString
-            $  "BoIndex("
+            $  (if uniqIdx then "Unique " else "Index ")
+            <> idxName
+            <> " "
             <> specStr
-            <> ", unique="
-            <> (if uniqIdx then "true" else "false")
-            <> ")"
             )
       let boi = if uniqIdx
             then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
@@ -201,6 +205,12 @@ boiHostCtor !pgsCtor _ !obs = do
       boiVar <- newTMVar boi
       writeTVar (entity'store $ objEntity this) $ toDyn boiVar
       exitEdhSTM pgs exit $ EdhObject this
+
+  boiName :: STM Text
+  boiName = Map.lookup (AttrByName "name") <$> readTVar obs >>= \case
+    Nothing               -> return "<index>"
+    Just (EdhString name) -> return name
+    Just v                -> return $ T.pack $ show v
 
   boiReindexProc :: EdhProcedure
   boiReindexProc (ArgsPack !args !kwargs) !exit = case args of
@@ -216,8 +226,9 @@ boiHostCtor !pgsCtor _ !obs = do
               (show esd)
           Just (boiVar :: TMVar BoIndex) -> do
     -- index update is expensive, use TMVar to avoid computation being retried
-            boi  <- takeTMVar boiVar
-            boi' <- reindexBusinessObject boi pgs bo
+            boi     <- takeTMVar boiVar
+            idxName <- boiName
+            boi'    <- reindexBusinessObject idxName boi pgs bo
             putTMVar boiVar boi'
             exitEdhSTM pgs exit nil
     _ -> throwEdh EvalError "Invalid args to boiReindexProc"

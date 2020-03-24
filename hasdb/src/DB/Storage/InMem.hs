@@ -199,13 +199,16 @@ data UniqBoIdx = UniqBoIdx {
     , reverse'of'uniq'idx :: !(Map.HashMap Object IndexKey)
   }
 
-reindexUniqBusObj :: UniqBoIdx -> EdhProgState -> Object -> STM UniqBoIdx
-reindexUniqBusObj uboi@(UniqBoIdx !spec !tree !rvrs) !pgs !bo = do
+reindexUniqBusObj
+  :: Text -> UniqBoIdx -> EdhProgState -> Object -> STM UniqBoIdx
+reindexUniqBusObj idxName uboi@(UniqBoIdx !spec !tree !rvrs) !pgs !bo = do
   newKey <- extractIndexKey pgs spec bo
   case TreeMap.lookup newKey tree' of
     Just _ ->
       throwEdhSTM pgs EvalError
         $  "Violation of unique constraint on index: "
+        <> idxName
+        <> " "
         <> T.pack (show spec)
     Nothing -> return uboi { tree'of'uniq'idx = TreeMap.insert newKey bo tree'
                            , reverse'of'uniq'idx = Map.insert bo newKey rvrs
@@ -235,8 +238,8 @@ data NouBoIdx = NouBoIdx {
     , reverse'of'nou'idx :: !(Map.HashMap Object IndexKey)
   }
 
-reindexNouBusObj :: NouBoIdx -> EdhProgState -> Object -> STM NouBoIdx
-reindexNouBusObj boi@(NouBoIdx !spec !tree !rvrs) !pgs !bo = do
+reindexNouBusObj :: Text -> NouBoIdx -> EdhProgState -> Object -> STM NouBoIdx
+reindexNouBusObj _idxName boi@(NouBoIdx !spec !tree !rvrs) !pgs !bo = do
   newKey <- extractIndexKey pgs spec bo
   return boi { tree'of'nou'idx    = TreeMap.alter putBoIn newKey tree'
              , reverse'of'nou'idx = Map.insert bo newKey rvrs
@@ -268,11 +271,12 @@ indexSpecOf (UniqueIndex    (UniqBoIdx spec _ _)) = spec
 indexSpecOf (NonUniqueIndex (NouBoIdx  spec _ _)) = spec
 
 
-reindexBusinessObject :: BoIndex -> EdhProgState -> Object -> STM BoIndex
-reindexBusinessObject (UniqueIndex !boi) pgs bo =
-  UniqueIndex <$> reindexUniqBusObj boi pgs bo
-reindexBusinessObject (NonUniqueIndex !boi) pgs bo =
-  NonUniqueIndex <$> reindexNouBusObj boi pgs bo
+reindexBusinessObject
+  :: Text -> BoIndex -> EdhProgState -> Object -> STM BoIndex
+reindexBusinessObject idxName (UniqueIndex !boi) pgs bo =
+  UniqueIndex <$> reindexUniqBusObj idxName boi pgs bo
+reindexBusinessObject idxName (NonUniqueIndex !boi) pgs bo =
+  NonUniqueIndex <$> reindexNouBusObj idxName boi pgs bo
 
 throwAwayIndexedObject :: BoIndex -> EdhProgState -> Object -> STM BoIndex
 throwAwayIndexedObject (UniqueIndex !boi) pgs bo =
