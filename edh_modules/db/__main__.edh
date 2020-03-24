@@ -1,5 +1,5 @@
 
-import * './.'
+import * 'db'
 
 for cmd from runtime.readCommands(ps1="(db)Đ: ", ps2="(db)Đ| ")
  do case type(cmd) of {
