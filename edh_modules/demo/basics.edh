@@ -60,9 +60,13 @@
       # import some classes from a lib parameterized with current db instance.
       import * DbLib(that)
 
-      this.deptByName = db.createIndex( Depart, expr (
+      # create global indices
+
+      db.createIndex( expr deptByName, Depart, expr (
         name:ASC,
        ), unique=true )
+
+      db.createIndex( expr personByName, Person, expr name:ASC )
     }
 
     # a business object class, should `extends db.superBack()` from its 
@@ -87,7 +91,10 @@
         extends db.superBack()
       }
 
+      # invoked on initial creation of this persistent business object, or 
+      # during history replay from backing storage.
       method __db_init__ () {
+
         # create a kindex for persons working for this dept, sorted by salary
         super.createKinIndex(
 # target attr name, will be available as super attr
@@ -99,6 +106,7 @@
 # key attrs, descending sort by salary
           expr ( salary:DESC, ),
         )
+
       }
 
       method __repr__ () {
@@ -122,7 +130,7 @@
     # once this method returns, the db is shutdown.
     method run() {
 
-      case this.deptByName[ 'Dev' ] of {
+      case db.deptByName[ 'Dev' ] of {
         { d01 } -> { pass }
 
         d01 = Depart('Dev')
@@ -132,6 +140,10 @@
 
         WorkFor( p01, d01, 12345 )
         WorkFor( p02, d01, 54321 )
+      }
+
+      case db.personByName['Compl'] of { compl=>_ } -> {
+        runtime.print( "Compl's record is: " ++ compl )
       }
 
       runtime.print( 'got dev ' ++ d01 )

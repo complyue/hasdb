@@ -111,7 +111,8 @@ class DataBack {
   # this method is normally called as the right-hand-expr of an assignment
   # (to an attribute of the db app), so it tends to run within a tx already,
   # we mark it with `ai` for extra certain.
-  method createIndex( boClass, indexSpec, unique=false ) ai {
+  method createIndex( indexKey, boClass, indexSpec, unique=false ) ai {
+    # TODO bake the index key into boi, let it report errors with the key
     idx = BoIndex( indexSpec, unique=unique, )
     bocIndices = this._indices[boClass] |>    (
                  this._indices[boClass] = {} )
@@ -119,7 +120,8 @@ class DataBack {
       bocIndices[ keyAttr ] |>   (
       bocIndices[ keyAttr ] = [] )
     )
-    return idx
+    this$indexKey = idx
+    nil  # return nothing
   }
 
   # the last entity identifier allocated
@@ -489,7 +491,7 @@ class SuperBack {
   # delete this business object in persistence respect
   method delete() {
     boClass = constructor(that)
-    bocIndices = this._indices[ boClass ] |> None
+    bocIndices = this.db._indices[ boClass ] |> None
     touchedIndices = {}  # collect touched global indices by attr
     for (attrKey, attrVal) from this._boScope.attrs() do case attrVal of {
       # referencing another business object, settle the relationship
@@ -499,8 +501,9 @@ class SuperBack {
       # handle trivially representable values, including `nil`
       ;| hasReConRepr(attrVal) -> {
         # encounter touched index by this attr
-        case bocIndices &> bocIndices[ attrKey ] |> nil of { boi } -> {
-          touchedIndices[ boi ] = true
+        case bocIndices &> bocIndices[ attrKey ] |> nil of { bois } -> 
+         for boi from bois do {
+            touchedIndices[ boi ] = true
         }
       }
     }
@@ -512,6 +515,8 @@ class SuperBack {
     for (boi, _) from touchedIndices do boi.(^*)(that)
     # persist the log
     this.db.persistOutlet <- (className(that), this.eid, ())
+
+    nil  # return nothing
   }
 
 }
