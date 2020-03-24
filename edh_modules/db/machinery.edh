@@ -1,9 +1,14 @@
 
 import (
 
-  className, newBo, 
-  streamToDisk, streamFromDisk, 
+  # re-export these
+  className, 
   BoIndex,
+
+  # don't re-export these
+  newBo as _newBo, 
+  streamToDisk as _streamToDisk, 
+  streamFromDisk as _streamFromDisk, 
 
   **_  # consume (drop) extra artifacts exported there, don't fail
 ) # 'db/ehi' is a host module installed by Haskell code,
@@ -38,13 +43,13 @@ method runDbApp(dataFileFolder, dbApp) {
     db = DataBack( outlet, dbApp )
 
     # read the most recent event from the sink, it must have been there already,
-    # as `streamToDisk()` won't subscribe to the persist outlet (only after 
+    # as `_streamToDisk()` won't subscribe to the persist outlet (only after 
     # which this producer proc will run) until it resolved the latest data file.
     db.init( mre( sinkBaseDFD ) )
   }
 
   # serialize the stream of sunk Edh values to the specified data folder
-  streamToDisk ( launchApp(), dataFileFolder, sinkBaseDFD )
+  _streamToDisk ( launchApp(), dataFileFolder, sinkBaseDFD )
 
 }
 
@@ -60,7 +65,7 @@ class DataBackLifecycle {
     that.bootstrap()
 
     producer restoreData( outlet ) {
-      streamFromDisk( outlet, baseDFD )
+      _streamFromDisk( outlet, baseDFD )
     }
     that._replayHistory( restoreData() )
 
@@ -314,7 +319,7 @@ class DataBack {
             # this bo not created yet, do non-standard construction of the
             # business object
             sb = SuperBack( this, eid )
-            bo = newBo( boClass, sb )
+            bo = _newBo( boClass, sb )
 
             bocExtent[eid] = bo
           }
