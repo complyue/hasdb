@@ -21,8 +21,13 @@ import           DB.RT
 
 
 -- | Manage lifecycle of Edh programs during the repl session
-edhProgLoop :: TQueue EdhConsoleIO -> EdhWorld -> IO ()
-edhProgLoop !ioQ !world = do
+edhProgLoop :: EdhRuntime -> IO ()
+edhProgLoop !runtime = do
+
+  -- create the world, we always work with this world no matter how
+  -- many times the Edh programs crash
+  world <- createEdhWorld runtime
+  installEdhBatteries world
 
   -- install the host module
   void $ installEdhModule world "db/ehi" $ \pgs modu -> do
@@ -68,14 +73,23 @@ edhProgLoop !ioQ !world = do
 
     updateEntityAttrs pgs (objEntity modu) dbArts
 
+  let loop = do
+        -- to run a module is to seek its `__main__.edh` and execute the
+        -- code there in a volatile module context, it can import itself
+        -- (i.e. `__init__.edh`) during the run. the imported module can
+        -- survive program crashes as all imported modules do.
+        runEdhModule world "db" >>= \case
+          Left err ->
+            atomically $ writeTQueue ioQ $ ConsoleOut $ T.pack $ show err
+          Right () -> pure ()
+        -- obviously the program has crashed now, but the world with all
+        -- modules ever imported, are still safe and sound.
+        -- we assume what the user has left in the volatile module is
+        -- dispensable, just so so.
+        atomically $ writeTQueue ioQ $ ConsoleOut "🐴🐴🐯🐯"
+        loop
   loop
- where
-  loop = do
-    runEdhModule world "db" >>= \case
-      Left  err -> atomically $ writeTQueue ioQ $ ConsoleOut $ T.pack $ show err
-      Right ()  -> pure ()
-    atomically $ writeTQueue ioQ $ ConsoleOut "🐴🐴🐯🐯"
-    loop
+  where ioQ = consoleIO runtime
 
 
 -- | Serialize output to `stdout` from Edh programs, and give them command
