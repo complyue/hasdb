@@ -7,7 +7,7 @@
   class DbLib {
 
     # an `__init__()` method if defined manifests the arguments to construct
-    # instances of the enclosing class (procedure)
+    # instances of the enclosing class
     #
     # requires an effective `DataBack` instance for each instance of this lib
     method __init__ (db as this.db) pass
@@ -21,7 +21,8 @@
 
         # don't do the `extends` in the class procedure, that'll confuse 
         # DataBack when instances are restored by history replay, in which
-        # case a `SuperBack` is added as a super, automatically.
+        # case the Person instance is created by non-standard construction
+        # with a `SuperBack` added as a super.
         extends db.superBack()
       }
 
@@ -45,15 +46,33 @@
     # will be assigned during `bootstrap()` method, which is called from the
     # effective `DataBack` instance, after this app instance is passed to
     # `runDbApp()`
-    db = nil
+    db := '<uninitialized>'
+
+    # this method is called before existing back data from the disk file is
+    # restored by replaying history, machinery necessary for history replay
+    # needs to be setup by this method.
+    method bootstrap() {
+      # `DataBack` instance will put `this` App as its first super,
+      # `run()` is called against the db instance, so `that` here is
+      # the actual `DataBack` instance.
+      this.db = that
+
+      # import some classes from a lib parameterized with current db instance.
+      import * DbLib(that)
+
+      this.deptByName = db.createIndex( Depart, expr (
+        name:ASC,
+       ), unique=true )
+    }
 
     # a business object class, should `extends db.superBack()` from its 
-    # `__init__()` method, for the business object instances of it to be
-    # persisted by the effective `DataBack`.
+    # `__init__()` method, for the business object instances of this class
+    # to be persisted by the effective `DataBack`.
     #
     # NOTE during history replay, when persistent objects are restored from
-    #      the backing storage, the `__init__()` method will NOT be called
-    #      as in normal cases after the class procedure is called against
+    #      the backing storage, an instance under goes a non-standard
+    #      construction, the `__init__()` method will NOT be called as in
+    #      normal construction after the class procedure is called against
     #      the new instance. so as `extends db.superBack()` carries the
     #      persistent-object-creation semantic, it should be written in 
     #      the `__init__()` method instead of in the class procedure.
@@ -72,7 +91,7 @@
         # create a kindex for persons working for this dept, sorted by salary
         super.createKinIndex(
 # target attr name, will be available as super attr
-          'workers',
+          expr workers,
 # business class as the relationship
           WorkFor,
 # attr key on the relationship bo whose value is a reference to this bo
@@ -96,23 +115,6 @@
       ) {
         extends db.superBack()
       }
-    }
-
-    # this method is called before existing back data from the disk file is
-    # restored by replaying history, machinery necessary for history replay
-    # needs to be setup by this method.
-    method bootstrap() {
-      # `DataBack` instance will put `this` App as its first super,
-      # `run()` is called against the db instance, so `that` here is
-      # the actual `DataBack` instance.
-      this.db = that
-
-      # import some classes from a lib parameterized with current db instance.
-      import * DbLib(that)
-
-      this.deptByName = db.createIndex( Depart, expr (
-        name:ASC,
-       ), unique=true )
     }
 
     # this is the *main* method of the application, all transactional changes
