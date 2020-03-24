@@ -463,20 +463,23 @@ class SuperBack {
   # (*<-@) handles `obj.xxx = yyy` for `obj` being a business child (referred to by `that`)
 
   method (*<-@) (attrKey, attrVal) {
-    attrValOld = that?$attrKey
+    case that?$attrKey of { attrValOld } -> {
+      if attrValOld == attrVal then {
+        return attrVal  # no value change, nop
+      }
 
-    # no value change, nop
-    attrValOld == attrVal -> { pass }
+      # cleanup the old relationship
+      case attrValOld of {{ SuperBack: sbRefOld }} ->
+        this.db._cleanup_rel( that, this, attrKey, attrValOld, sbRefOld)
+    }
 
     # apply the attribute update
     that$attrKey = attrVal
 
-    # cleanup the old relationship
-    case attrValOld of {{ SuperBack: sbRefOld }} ->
-      this.db._cleanup_rel( that, this, attrKey, attrValOld, sbRefOld)
-
     # settle new attribute
     this.db._settle_attr( that, this, attrKey, attrVal )
+
+    attrVal  # keep the assignment result eval to target value as in normal cases
   }
 
   # use same method impl. for (<-@) and (*<-@), treating internal/external attr
