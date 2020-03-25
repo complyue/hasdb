@@ -102,7 +102,7 @@
 # business class as the relationship
           WorkFor,
 # attr key on the relationship bo whose value is a reference to this bo
-          'depart',
+          expr depart,
 # key attrs, descending sort by salary
           expr ( salary:DESC, ),
         )

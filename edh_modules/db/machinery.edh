@@ -231,7 +231,7 @@ class DataBack {
   # settle a new relationship
   method _settle_rel( boRel, sbRel, refAttr, bo, sb ) {
     # update reverse reference on the referee sb's kin index/set if any
-    case sb._kins[ constructor(boRel):refAttr ] of { kin } -> {
+    case sb._kins[ constructor(boRel):(''++refAttr) ] of { kin } -> {
       kin.(<-)(boRel)
     }
   }
@@ -239,7 +239,7 @@ class DataBack {
   # cleanup an old relationship
   method _cleanup_rel( boRel, sbRel, refAttr, boOld, sbOld ) {
     # throw away reverse reference on the referee sb's kin index/set if any
-    case sbOld._kins[ constructor(boRel):refAttr ] of { kin } -> {
+    case sbOld._kins[ constructor(boRel):(''++refAttr) ] of { kin } -> {
       kin.(^*)(boRel)
     }
   }
@@ -419,7 +419,7 @@ class SuperBack {
   method createKinIndex ( kinAttr, relClass, relAttr, indexSpec, unique=false ) {
     idx = BoIndex( indexSpec, unique=unique )
     # chain the 2 assignments into single transaction
-    this._kins[ relClass:relAttr ] = (
+    this._kins[ relClass:(''++relAttr) ] = (
       # will be available from `that` as super attr
       this$kinAttr = idx
     )
@@ -439,7 +439,7 @@ class SuperBack {
   method createKinSet ( kinAttr, relClass, relAttr ) {
     ks = BoSet()  # TODO impl. host class BoSet
     # chain the 2 assignments into single transaction
-    this._kins[ relClass:relAttr ] = (
+    this._kins[ relClass:(''++relAttr) ] = (
       # will be available from `that` as super attr
       this$kinAttr = ks
       nil  # return nothing
