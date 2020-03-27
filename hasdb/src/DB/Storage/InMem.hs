@@ -34,74 +34,74 @@ instance Show IndexSpec where
     showspec ((attr, asc) : rest@(_ : _)) =
       show attr <> ordind asc <> showspec rest
 
-indexFieldSortOrderSpec :: EdhProgState -> Text -> STM Bool
-indexFieldSortOrderSpec pgs ordSpec = case ordSpec of
-  "ASC"        -> return True
-  "DESC"       -> return False
-  "ASCENDING"  -> return True
-  "DESCENDING" -> return False
-  "asc"        -> return True
-  "desc"       -> return False
-  "ascending"  -> return True
-  "descending" -> return False
+indexFieldSortOrderSpec :: EdhProgState -> Text -> (Bool -> STM ()) -> STM ()
+indexFieldSortOrderSpec pgs !ordSpec !exit = case ordSpec of
+  "ASC"        -> exit True
+  "DESC"       -> exit False
+  "ASCENDING"  -> exit True
+  "DESCENDING" -> exit False
+  "asc"        -> exit True
+  "desc"       -> exit False
+  "ascending"  -> exit True
+  "descending" -> exit False
   _ ->
     throwEdhSTM pgs EvalError $ "Invalid index field sorting order: " <> ordSpec
 
-parseIndexSpec :: EdhProgState -> [EdhValue] -> STM IndexSpec
-parseIndexSpec pgs !args = do
-  spec <- case args of
+
+parseIndexSpec :: EdhProgState -> [EdhValue] -> (IndexSpec -> STM ()) -> STM ()
+parseIndexSpec pgs !args !exit = do
+  case args of
     [EdhExpr _ (AttrExpr (DirectRef (NamedAttr !attrName))) _] ->
-      return [(AttrByName attrName, True)]
+      doExit [(AttrByName attrName, True)]
     [EdhExpr _ (InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (AttrExpr (DirectRef (NamedAttr ordSpec)))) _]
-      -> do
-        asc <- indexFieldSortOrderSpec pgs ordSpec
-        return [(AttrByName attrName, asc)]
+      -> indexFieldSortOrderSpec pgs ordSpec
+        $ \asc -> doExit [(AttrByName attrName, asc)]
     [EdhExpr _ (InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (LitExpr (BoolLiteral !asc))) _]
-      -> return [(AttrByName attrName, asc)]
+      -> doExit [(AttrByName attrName, asc)]
     [EdhExpr _ (TupleExpr !fieldSpecs) _] ->
-      sequence $ fieldFromExpr <$> fieldSpecs
-    [EdhTuple !fieldSpecs  ] -> sequence $ fieldFromVal <$> fieldSpecs
+      seqcontSTM (fieldFromExpr <$> fieldSpecs) doExit
+    [EdhTuple !fieldSpecs  ] -> seqcontSTM (fieldFromVal <$> fieldSpecs) doExit
     [EdhList  (List _ !fsl)] -> do
       fieldSpecs <- readTVar fsl
-      sequence $ fieldFromVal <$> fieldSpecs
+      seqcontSTM (fieldFromVal <$> fieldSpecs) doExit
     _ ->
       throwEdhSTM pgs EvalError $ "Invalid index specification: " <> T.pack
         (show args)
-  when (null spec)
-    $ throwEdhSTM pgs EvalError "Index specification can not be empty"
-  return $ IndexSpec spec
  where
-  fieldFromExpr :: Expr -> STM (AttrKey, AscSort)
-  fieldFromExpr x = case x of
+  doExit :: [(AttrKey, AscSort)] -> STM ()
+  doExit !spec = do
+    when (null spec)
+      $ throwEdhSTM pgs EvalError "Index specification can not be empty"
+    exit $ IndexSpec spec
+  fieldFromExpr :: Expr -> ((AttrKey, AscSort) -> STM ()) -> STM ()
+  fieldFromExpr !x !exit' = case x of
     AttrExpr (DirectRef (NamedAttr !attrName)) ->
-      return (AttrByName attrName, True)
+      exit' (AttrByName attrName, True)
     InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (AttrExpr (DirectRef (NamedAttr ordSpec)))
-      -> do
-        asc <- indexFieldSortOrderSpec pgs ordSpec
-        return (AttrByName attrName, asc)
+      -> indexFieldSortOrderSpec pgs ordSpec
+        $ \asc -> exit' (AttrByName attrName, asc)
     InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (LitExpr (BoolLiteral !asc))
-      -> return (AttrByName attrName, asc)
+      -> exit' (AttrByName attrName, asc)
     TupleExpr [AttrExpr (DirectRef (NamedAttr !attrName)), AttrExpr (DirectRef (NamedAttr ordSpec))]
-      -> do
-        asc <- indexFieldSortOrderSpec pgs ordSpec
-        return (AttrByName attrName, asc)
+      -> indexFieldSortOrderSpec pgs ordSpec
+        $ \asc -> exit' (AttrByName attrName, asc)
     TupleExpr [AttrExpr (DirectRef (NamedAttr !attrName)), LitExpr (BoolLiteral !asc)]
-      -> return (AttrByName attrName, asc)
+      -> exit' (AttrByName attrName, asc)
     _ -> throwEdhSTM pgs EvalError $ "Invalid index field spec: " <> T.pack
       (show x)
-  fieldFromVal :: EdhValue -> STM (AttrKey, AscSort)
-  fieldFromVal x = case x of
+  fieldFromVal :: EdhValue -> ((AttrKey, AscSort) -> STM ()) -> STM ()
+  fieldFromVal !x !exit' = case x of
     EdhPair (EdhString !attrName) (EdhBool !asc) ->
-      return (AttrByName attrName, asc)
+      exit' (AttrByName attrName, asc)
     EdhTuple [EdhString !attrName, EdhBool !asc] ->
-      return (AttrByName attrName, asc)
-    EdhString !attrName -> return (AttrByName attrName, True)
+      exit' (AttrByName attrName, asc)
+    EdhString !attrName -> exit' (AttrByName attrName, True)
     EdhPair (EdhString !attrName) (EdhString !ordSpec) -> do
-      asc <- indexFieldSortOrderSpec pgs ordSpec
-      return (AttrByName attrName, asc)
+      indexFieldSortOrderSpec pgs ordSpec
+        $ \asc -> exit' (AttrByName attrName, asc)
     EdhTuple [EdhString !attrName, EdhString !ordSpec] -> do
-      asc <- indexFieldSortOrderSpec pgs ordSpec
-      return (AttrByName attrName, asc)
+      indexFieldSortOrderSpec pgs ordSpec
+        $ \asc -> exit' (AttrByName attrName, asc)
     _ -> throwEdhSTM pgs EvalError $ "Invalid index field spec: " <> T.pack
       (show x)
 
@@ -115,29 +115,27 @@ data IdxKeyVal =
     | IdxAggrVal ![Maybe IdxKeyVal]
   deriving (Eq, Ord)
 
-edhIdxKeyVal :: EdhProgState -> EdhValue -> STM (Maybe IdxKeyVal)
-edhIdxKeyVal _    EdhNil          = return Nothing
-edhIdxKeyVal _    (EdhBool    v ) = return $ Just $ IdxBoolVal v
-edhIdxKeyVal _    (EdhDecimal v ) = return $ Just $ IdxNumVal v
-edhIdxKeyVal _    (EdhString  v ) = return $ Just $ IdxStrVal v
-edhIdxKeyVal !pgs (EdhTuple   vs) = do
-  ikvs <- sequence $ edhIdxKeyVal pgs <$> vs
-  return $ Just $ IdxAggrVal ikvs
+edhIdxKeyVal
+  :: EdhProgState -> EdhValue -> ((Maybe IdxKeyVal) -> STM ()) -> STM ()
+edhIdxKeyVal _ EdhNil         !exit = exit Nothing
+edhIdxKeyVal _ (EdhBool    v) !exit = exit $ Just $ IdxBoolVal v
+edhIdxKeyVal _ (EdhDecimal v) !exit = exit $ Just $ IdxNumVal v
+edhIdxKeyVal _ (EdhString  v) !exit = exit $ Just $ IdxStrVal v
+edhIdxKeyVal !pgs (EdhTuple vs) !exit =
+  seqcontSTM (edhIdxKeyVal pgs <$> vs) $ exit . Just . IdxAggrVal
 -- list is mutable, meaning can change without going through entity attr
--- update, don't support it so far
--- edhIdxKeyVal !pgs (EdhList (List _ vs')) = do
---   vs   <- readTVar vs'
---   ikvs <- sequence $ edhIdxKeyVal pgs <$> vs
---   return $ Just $ IdxAggrVal ikvs
-edhIdxKeyVal !pgs !val =
+-- update, don't support it unless sth else is figured out
+edhIdxKeyVal !pgs !val _ =
   throwEdhSTM pgs EvalError $ "Invalid value type to be indexed: " <> T.pack
     (show $ edhTypeOf val)
 
-edhIdxKeyVals :: EdhProgState -> EdhValue -> STM (Maybe [Maybe IdxKeyVal])
-edhIdxKeyVals _   EdhNil         = return Nothing
-edhIdxKeyVals _   (EdhTuple [] ) = return Nothing
-edhIdxKeyVals pgs (EdhTuple kvs) = Just <$> sequence (edhIdxKeyVal pgs <$> kvs)
-edhIdxKeyVals pgs kv             = Just . (: []) <$> edhIdxKeyVal pgs kv
+edhIdxKeyVals
+  :: EdhProgState -> EdhValue -> ((Maybe [Maybe IdxKeyVal]) -> STM ()) -> STM ()
+edhIdxKeyVals _ EdhNil        !exit = exit Nothing
+edhIdxKeyVals _ (EdhTuple []) !exit = exit Nothing
+edhIdxKeyVals pgs (EdhTuple kvs) !exit =
+  seqcontSTM (edhIdxKeyVal pgs <$> kvs) $ exit . Just
+edhIdxKeyVals pgs kv !exit = edhIdxKeyVal pgs kv $ \ikv -> exit $ Just [ikv]
 
 edhValOfIdxKey :: Maybe IdxKeyVal -> EdhValue
 edhValOfIdxKey Nothing                  = nil
@@ -178,13 +176,14 @@ instance Ord IndexKey where
         LT -> if asc then LT else GT
         GT -> if asc then GT else LT
 
-extractIndexKey :: EdhProgState -> IndexSpec -> Object -> STM IndexKey
-extractIndexKey !pgs spec@(IndexSpec !spec') !bo = do
-  kd <- sequence $ extractField . fst <$> spec'
-  return $ IndexKey spec kd
+extractIndexKey
+  :: EdhProgState -> IndexSpec -> Object -> (IndexKey -> STM ()) -> STM ()
+extractIndexKey !pgs spec@(IndexSpec !spec') !bo !exit =
+  seqcontSTM (extractField . fst <$> spec') $ exit . IndexKey spec
  where
-  extractField :: AttrKey -> STM (Maybe IdxKeyVal)
-  extractField !k = lookupEdhObjAttr pgs bo k >>= edhIdxKeyVal pgs
+  extractField :: AttrKey -> ((Maybe IdxKeyVal) -> STM ()) -> STM ()
+  extractField !k !exit' =
+    lookupEdhObjAttr pgs bo k >>= \v -> edhIdxKeyVal pgs v exit'
 
 edhValueOfIndexKey :: IndexKey -> EdhValue
 edhValueOfIndexKey (IndexKey _ ikvs) = EdhTuple $ edhValOfIdxKey <$> ikvs
@@ -200,26 +199,31 @@ data UniqBoIdx = UniqBoIdx {
   }
 
 reindexUniqBusObj
-  :: Text -> UniqBoIdx -> EdhProgState -> Object -> STM UniqBoIdx
-reindexUniqBusObj idxName uboi@(UniqBoIdx !spec !tree !rvrs) !pgs !bo = do
-  newKey <- extractIndexKey pgs spec bo
-  case TreeMap.lookup newKey tree' of
+  :: Text
+  -> UniqBoIdx
+  -> EdhProgState
+  -> Object
+  -> (UniqBoIdx -> STM ())
+  -> STM ()
+reindexUniqBusObj idxName uboi@(UniqBoIdx !spec !tree !rvrs) !pgs !bo !exit =
+  extractIndexKey pgs spec bo $ \newKey -> case TreeMap.lookup newKey tree' of
     Just _ ->
       throwEdhSTM pgs EvalError
         $  "Violation of unique constraint on index: "
         <> idxName
         <> " "
         <> T.pack (show spec)
-    Nothing -> return uboi { tree'of'uniq'idx = TreeMap.insert newKey bo tree'
-                           , reverse'of'uniq'idx = Map.insert bo newKey rvrs
-                           }
+    Nothing -> exit uboi { tree'of'uniq'idx    = TreeMap.insert newKey bo tree'
+                         , reverse'of'uniq'idx = Map.insert bo newKey rvrs
+                         }
  where
   tree' = case Map.lookup bo rvrs of
     Nothing     -> tree
     Just oldKey -> TreeMap.delete oldKey tree
 
-throwAwayUniqIdxObj :: UniqBoIdx -> EdhProgState -> Object -> STM UniqBoIdx
-throwAwayUniqIdxObj uboi@(UniqBoIdx _ !tree !rvrs) _ !bo = return uboi
+throwAwayUniqIdxObj
+  :: UniqBoIdx -> EdhProgState -> Object -> (UniqBoIdx -> STM ()) -> STM ()
+throwAwayUniqIdxObj uboi@(UniqBoIdx _ !tree !rvrs) _ !bo !exit = exit uboi
   { tree'of'uniq'idx    = tree'
   , reverse'of'uniq'idx = Map.delete bo rvrs
   }
@@ -238,12 +242,18 @@ data NouBoIdx = NouBoIdx {
     , reverse'of'nou'idx :: !(Map.HashMap Object IndexKey)
   }
 
-reindexNouBusObj :: Text -> NouBoIdx -> EdhProgState -> Object -> STM NouBoIdx
-reindexNouBusObj _idxName boi@(NouBoIdx !spec !tree !rvrs) !pgs !bo = do
-  newKey <- extractIndexKey pgs spec bo
-  return boi { tree'of'nou'idx    = TreeMap.alter putBoIn newKey tree'
-             , reverse'of'nou'idx = Map.insert bo newKey rvrs
-             }
+reindexNouBusObj
+  :: Text
+  -> NouBoIdx
+  -> EdhProgState
+  -> Object
+  -> (NouBoIdx -> STM ())
+  -> STM ()
+reindexNouBusObj _idxName boi@(NouBoIdx !spec !tree !rvrs) !pgs !bo !exit =
+  extractIndexKey pgs spec bo $ \newKey -> exit boi
+    { tree'of'nou'idx    = TreeMap.alter putBoIn newKey tree'
+    , reverse'of'nou'idx = Map.insert bo newKey rvrs
+    }
  where
   putBoIn :: Maybe (Set.HashSet Object) -> Maybe (Set.HashSet Object)
   putBoIn oldEntry = case oldEntry of
@@ -253,8 +263,9 @@ reindexNouBusObj _idxName boi@(NouBoIdx !spec !tree !rvrs) !pgs !bo = do
     Nothing     -> tree
     Just oldKey -> TreeMap.update (Just . Set.delete bo) oldKey tree
 
-throwAwayNouIdxObj :: NouBoIdx -> EdhProgState -> Object -> STM NouBoIdx
-throwAwayNouIdxObj boi@(NouBoIdx _ !tree !rvrs) _ !bo = return boi
+throwAwayNouIdxObj
+  :: NouBoIdx -> EdhProgState -> Object -> (NouBoIdx -> STM ()) -> STM ()
+throwAwayNouIdxObj boi@(NouBoIdx _ !tree !rvrs) _ !bo !exit = exit boi
   { tree'of'nou'idx    = tree'
   , reverse'of'nou'idx = Map.delete bo rvrs
   }
@@ -272,17 +283,18 @@ indexSpecOf (NonUniqueIndex (NouBoIdx  spec _ _)) = spec
 
 
 reindexBusinessObject
-  :: Text -> BoIndex -> EdhProgState -> Object -> STM BoIndex
-reindexBusinessObject idxName (UniqueIndex !boi) pgs bo =
-  UniqueIndex <$> reindexUniqBusObj idxName boi pgs bo
-reindexBusinessObject idxName (NonUniqueIndex !boi) pgs bo =
-  NonUniqueIndex <$> reindexNouBusObj idxName boi pgs bo
+  :: Text -> BoIndex -> EdhProgState -> Object -> (BoIndex -> STM ()) -> STM ()
+reindexBusinessObject idxName (UniqueIndex !boi) pgs bo !exit =
+  reindexUniqBusObj idxName boi pgs bo $ exit . UniqueIndex
+reindexBusinessObject idxName (NonUniqueIndex !boi) pgs bo !exit =
+  reindexNouBusObj idxName boi pgs bo $ exit . NonUniqueIndex
 
-throwAwayIndexedObject :: BoIndex -> EdhProgState -> Object -> STM BoIndex
-throwAwayIndexedObject (UniqueIndex !boi) pgs bo =
-  UniqueIndex <$> throwAwayUniqIdxObj boi pgs bo
-throwAwayIndexedObject (NonUniqueIndex !boi) pgs bo =
-  NonUniqueIndex <$> throwAwayNouIdxObj boi pgs bo
+throwAwayIndexedObject
+  :: BoIndex -> EdhProgState -> Object -> (BoIndex -> STM ()) -> STM ()
+throwAwayIndexedObject (UniqueIndex !boi) pgs bo !exit =
+  throwAwayUniqIdxObj boi pgs bo $ exit . UniqueIndex
+throwAwayIndexedObject (NonUniqueIndex !boi) pgs bo !exit =
+  throwAwayNouIdxObj boi pgs bo $ exit . NonUniqueIndex
 
 
 lookupBoIndex :: BoIndex -> [Maybe IdxKeyVal] -> STM EdhValue

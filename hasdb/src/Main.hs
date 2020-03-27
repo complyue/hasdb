@@ -34,18 +34,19 @@ inputSettings = Settings { complete       = \(_left, _right) -> return ("", [])
 main :: IO ()
 main = do
 
-  ioQ     <- newTQueueIO
-  runtime <- defaultEdhRuntime ioQ
+  runtime <- defaultEdhRuntime
+  let ioQ = consoleIO runtime
 
   void $ forkFinally (edhProgLoop runtime) $ \result -> do
     case result of
       Left (e :: SomeException) ->
         atomically $ writeTQueue ioQ $ ConsoleOut $ "💥 " <> T.pack (show e)
-      Right _ -> atomically $ writeTQueue ioQ $ ConsoleOut "Bye."
+      Right _ -> pure ()
+    -- shutdown console IO anyway
     atomically $ writeTQueue ioQ ConsoleShutdown
 
   runInputT inputSettings $ do
     outputStrLn ">> Haskell Data Back <<"
-    ioLoop ioQ
+    defaultEdhIOLoop runtime
 
   flushRuntimeLogs runtime

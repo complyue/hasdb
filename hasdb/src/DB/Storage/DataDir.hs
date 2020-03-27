@@ -105,7 +105,7 @@ streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
   --      schema, e.g. periodically inserted delimiter timestamp. then the
   --      replay/restore can have such checkpoint based range selection.
                         !evd ->
-                          runEdhProg pgs
+                          runEdhProc pgs
                             $ edhValueRepr evd
                             $ \(OriginalValue evr _ _) -> case evr of
                                 EdhString evrs ->

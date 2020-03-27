@@ -64,7 +64,7 @@ newBoProc (ArgsPack !args !kwargs) !exit = case args of
               >>= \case
                     EdhNil -> exitEdhSTM pgs exit $ EdhObject bo
                     EdhMethod !mth'proc ->
-                      runEdhProg pgs
+                      runEdhProc pgs
                         $ callEdhMethod bo mth'proc (ArgsPack [] Map.empty)
                         $ \_ -> contEdhSTM $ exitEdhSTM pgs exit $ EdhObject bo
                     !badMth ->
@@ -170,41 +170,42 @@ boiHostCtor !pgsCtor _ !obs = do
   __init__ :: EdhProcedure
   __init__ (ArgsPack !args !kwargs) !exit = do
     pgs <- ask
-    let this = thisObject $ contextScope $ edh'context pgs
-    contEdhSTM $ do
-      uniqIdx <- case Map.lookup "unique" kwargs of
-        Nothing          -> return False
-        Just (EdhBool b) -> return b
-        Just v ->
-          throwEdhSTM pgs EvalError
-            $  "Invalid unique arg value type: "
-            <> T.pack (show $ edhTypeOf v)
-      spec@(IndexSpec spec') <- parseIndexSpec pgs args
-      let specStr = T.pack $ show spec
-          idxName = case Map.lookup "name" kwargs of
-            Nothing                 -> "<index>"
-            Just (EdhString keyStr) -> keyStr
-            Just v                  -> T.pack $ show v
-      modifyTVar' obs
-        $ Map.insert (AttrByName "unique") (EdhBool uniqIdx)
-        . Map.insert (AttrByName "spec") (EdhString specStr)
-        . Map.insert (AttrByName "keys")
-                     (EdhTuple $ attrKeyValue . fst <$> spec')
-        . Map.insert (AttrByName "name") (EdhString idxName)
-        . Map.insert
-            (AttrByName "__repr__")
-            (  EdhString
-            $  (if uniqIdx then "Unique " else "Index ")
-            <> idxName
-            <> " "
-            <> specStr
-            )
-      let boi = if uniqIdx
-            then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
-            else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty
-      boiVar <- newTMVar boi
-      writeTVar (entity'store $ objEntity this) $ toDyn boiVar
-      exitEdhSTM pgs exit $ EdhObject this
+    let
+      this = thisObject $ contextScope $ edh'context pgs
+      doIt :: Bool -> STM ()
+      doIt !uniqIdx = do
+        parseIndexSpec pgs args $ \spec@(IndexSpec spec') -> do
+          let specStr = T.pack $ show spec
+              idxName = case Map.lookup "name" kwargs of
+                Nothing                 -> "<index>"
+                Just (EdhString keyStr) -> keyStr
+                Just v                  -> T.pack $ show v
+          modifyTVar' obs
+            $ Map.insert (AttrByName "unique") (EdhBool uniqIdx)
+            . Map.insert (AttrByName "spec") (EdhString specStr)
+            . Map.insert (AttrByName "keys")
+                         (EdhTuple $ attrKeyValue . fst <$> spec')
+            . Map.insert (AttrByName "name") (EdhString idxName)
+            . Map.insert
+                (AttrByName "__repr__")
+                (  EdhString
+                $  (if uniqIdx then "Unique " else "Index ")
+                <> idxName
+                <> " "
+                <> specStr
+                )
+          let boi = if uniqIdx
+                then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
+                else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty
+          boiVar <- newTMVar boi
+          writeTVar (entity'store $ objEntity this) $ toDyn boiVar
+          exitEdhSTM pgs exit $ EdhObject this
+    contEdhSTM $ case Map.lookup "unique" kwargs of
+      Nothing          -> doIt False
+      Just (EdhBool b) -> doIt b
+      Just v ->
+        throwEdhSTM pgs EvalError $ "Invalid unique arg value type: " <> T.pack
+          (show $ edhTypeOf v)
 
   boiName :: STM Text
   boiName = Map.lookup (AttrByName "name") <$> readTVar obs >>= \case
@@ -228,9 +229,9 @@ boiHostCtor !pgsCtor _ !obs = do
     -- index update is expensive, use TMVar to avoid computation being retried
             boi     <- takeTMVar boiVar
             idxName <- boiName
-            boi'    <- reindexBusinessObject idxName boi pgs bo
-            putTMVar boiVar boi'
-            exitEdhSTM pgs exit nil
+            reindexBusinessObject idxName boi pgs bo $ \boi' -> do
+              putTMVar boiVar boi'
+              exitEdhSTM pgs exit nil
     _ -> throwEdh EvalError "Invalid args to boiReindexProc"
 
   boiThrowAwayProc :: EdhProcedure
@@ -247,10 +248,10 @@ boiHostCtor !pgsCtor _ !obs = do
               (show esd)
           Just (boiVar :: TMVar BoIndex) -> do
     -- index update is expensive, use TMVar to avoid computation being retried
-            boi  <- takeTMVar boiVar
-            boi' <- throwAwayIndexedObject boi pgs bo
-            putTMVar boiVar boi'
-            exitEdhSTM pgs exit nil
+            boi <- takeTMVar boiVar
+            throwAwayIndexedObject boi pgs bo $ \boi' -> do
+              putTMVar boiVar boi'
+              exitEdhSTM pgs exit nil
     _ -> throwEdh EvalError "Invalid args to boiThrowAwayProc"
 
   boiLookupProc :: EdhProcedure
@@ -267,7 +268,7 @@ boiHostCtor !pgsCtor _ !obs = do
               (show esd)
           Just (boiVar :: TMVar BoIndex) -> do
             boi <- readTMVar boiVar
-            edhIdxKeyVals pgs keyValues >>= \case
+            edhIdxKeyVals pgs keyValues $ \case
               Nothing          -> exitEdhSTM pgs exit nil
               Just !idxKeyVals -> do
                 result <- lookupBoIndex boi idxKeyVals
@@ -293,7 +294,7 @@ boiHostCtor !pgsCtor _ !obs = do
           yieldResult :: [(IndexKey, EdhValue)] -> STM ()
           yieldResult [] = return ()
           yieldResult ((ik, v) : rest) =
-            runEdhProg pgs'
+            runEdhProc pgs'
               $ iter'cb
                   (EdhArgsPack
                     (ArgsPack [edhValueOfIndexKey ik, noneNil v] Map.empty)
@@ -310,12 +311,12 @@ boiHostCtor !pgsCtor _ !obs = do
                   $  "bug: this is not a boi : "
                   <> T.pack (show esd)
               Just (boiVar :: TMVar BoIndex) -> do
-                boi        <- readTMVar boiVar
-                minKeyVals <- edhIdxKeyVals pgs minKey
-                maxKeyVals <- edhIdxKeyVals pgs maxKey
-                result     <- fn boi minKeyVals maxKeyVals
-                yieldResult result
-                exitEdhSTM pgs exit nil
+                boi <- readTMVar boiVar
+                edhIdxKeyVals pgs minKey $ \minKeyVals ->
+                  edhIdxKeyVals pgs maxKey $ \maxKeyVals -> do
+                    result <- fn boi minKeyVals maxKeyVals
+                    yieldResult result
+                    exitEdhSTM pgs exit nil
 
 
 type IdxRng = (EdhValue, EdhValue)
@@ -411,7 +412,7 @@ bosHostCtor !pgsCtor _ !obs = do
         let yieldResult :: [Object] -> STM ()
             yieldResult [] = return ()
             yieldResult (bo : rest) =
-                runEdhProg pgs' $ iter'cb (EdhObject bo) $ \_ -> yieldResult rest
+                runEdhProc pgs' $ iter'cb (EdhObject bo) $ \_ -> yieldResult rest
         in  contEdhSTM $ do
               esd <- readTVar es
               case fromDynamic esd of
