@@ -143,22 +143,43 @@
       }
 
       case db.personByName['Compl'] of { compl=>_ } -> {
-        runtime.print( "Compl's record is: " ++ compl )
+        console.print( "Compl's record is: " ++ compl )
       }
 
-      runtime.print( 'got dev ' ++ d01 )
+      console.print( 'got dev ' ++ d01 )
       for (ixk, workRel) from d01.workers.range() do 
-        runtime.print( 'got workers ' ++ workRel.person ++
+        console.print( 'got workers ' ++ workRel.person ++
           ' with sorting order ' ++ ixk)
 
       shutdown := 'shtudown'  # define the shutdown command
-      for cmd from runtime.readCommands(ps1="(app)Đ: ", ps2="(app)Đ| ")
-       do case cmd of {
-        shutdown -> { break }
-        nil -> { continue }
-        runtime.print( cmd )
+
+      while true {
+        case console.readCommand(ps1="(app)Đ: ", ps2="(app)Đ| ") of {
+          shutdown -> { break }
+          { cmd } -> {
+            console.print( cmd )
+            cmd = nil  # clear it
+          }
+        }
+      } $=> {  # catch exceptions
+
+        {{ ProgramHalt: ph }} -> {
+          throw ph  # escalate a halt to the program loop of the
+          # host interpreter, let it decide what to do.
+        }
+
+        {{ IOError:exc }} -> {
+          console.fatal <| 'IO error - ' ++ exc
+          throw exc  # escalate it to the program loop of the
+          # host interpreter, let it decide what to do.
+        }
+
+        { exc } -> {
+          console.print( 'Recovered from error', exception=exc )
+        }
+
       }
-      runtime.print( 'DB app shutting down ...' )
+      console.print( 'DB app shutting down ...' )
 
     }
   }

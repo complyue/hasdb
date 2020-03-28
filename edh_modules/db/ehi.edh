@@ -11,6 +11,6 @@
 
 # this Edh source file should never be imported, unless relevant code is
 # run with a wrong Edh interpreter that does not install such a host module.
-runtime.fatal<| 
+console.fatal<| 
   "module `db/ehi` should be installed by Haskell code " ++
   "before the Edh world runs!"

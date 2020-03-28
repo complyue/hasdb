@@ -9,4 +9,4 @@ d01.delete()
 
 shutdown
 
-runtime.exit()
+console.exit()

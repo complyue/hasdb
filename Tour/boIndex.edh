@@ -23,7 +23,7 @@ bos.(<-)(bo3)
 
 bos.(^*)(bo2)
 
-for bo from bos.all() do runtime.info <| 'got bo in set: ' ++ bo
+for bo from bos.all() do console.info <| 'got bo in set: ' ++ bo
 
 
 {
@@ -63,9 +63,9 @@ uoi[1,2,3]
 noi[1,2,3]
 
 
-for (ik, bo) from uoi.range() do runtime.info<| 'unique one: ' ++ ik ++ ' - ' ++ bo
+for (ik, bo) from uoi.range() do console.info<| 'unique one: ' ++ ik ++ ' - ' ++ bo
 
-for (ik, bo) from noi.range() do runtime.info<| 'non-unique one: ' ++ ik ++ ' - ' ++ bo
+for (ik, bo) from noi.range() do console.info<| 'non-unique one: ' ++ ik ++ ' - ' ++ bo
 
-for (ik, bos) from noi.groups() do runtime.info<| 'group ' ++ ik ++ ' - ' ++ bos
+for (ik, bos) from noi.groups() do console.info<| 'group ' ++ ik ++ ' - ' ++ bos
 

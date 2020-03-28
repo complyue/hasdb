@@ -167,7 +167,7 @@ class DataBack {
       }
       # not to persist, treating as a transient attribute
       {#
-      runtime.debug<| 'attribute of type ' ++ type(attrVal)
+      console.debug<| 'attribute of type ' ++ type(attrVal)
         ++ ' treated as transient attribute ' ++ attrKey 
         ++ ' for business object ' ++ sb.eid
         ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
@@ -221,7 +221,7 @@ class DataBack {
 
     # not to persist, treating as a transient attribute
     {#
-    runtime.debug<| 'attribute of type ' ++ type(attrVal)
+    console.debug<| 'attribute of type ' ++ type(attrVal)
       ++ ' treated as transient attribute ' ++ attrKey 
       ++ ' for business object ' ++ sb.eid
       ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
@@ -273,7 +273,7 @@ class DataBack {
         }
         # not to persist, treating as a transient attribute
         {#
-        runtime.debug<| 'attribute of type ' ++ type(attrVal)
+        console.debug<| 'attribute of type ' ++ type(attrVal)
           ++ ' treated as transient attribute ' ++ attrKey 
           ++ ' for business object ' ++ sb.eid
           ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
