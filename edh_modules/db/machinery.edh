@@ -42,6 +42,13 @@ method runDbApp(dataFileFolder, dbApp) {
   producer launchApp( outlet ) {
     db = DataBack( outlet, dbApp )
 
+if console.logLevel <= console.debug then {
+  go { perceive outlet {
+    nil -> console.debug <| 'persistOutlet EOS'
+    { pr } -> console.debug <| 'persistOutlet REC\n' ++ pr
+  } }
+}
+
     # read the most recent event from the sink, it must have been there already,
     # as `_streamToDisk()` won't subscribe to the persist outlet (only after 
     # which this producer proc will run) until it resolved the latest data file.
@@ -256,6 +263,8 @@ class DataBack {
         return nil  # this bo already dumped to version
       }
 
+console.debug<| 'persist dump '++className(bo)++' # '++sb.eid
+
       persistAttrs = []
       for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
         # referencing another business object
@@ -296,6 +305,50 @@ class DataBack {
     }
   }
 
+  method _cleanout_obj ( bo, sb, persist=true ) {
+    boClass = constructor(bo)
+    bocIndices = this._indices[ boClass ] |> None
+    touchedIndices = {}  # collect touched global indices by attr
+
+    for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
+      # referencing another business object, settle the relationship
+      {{ SuperBack: sbRef }} ->  {
+        this._cleanup_rel( bo, sb, attrKey, attrVal, sbRef )
+      }
+      # handle trivially representable values, including `nil`
+      ;| hasReConRepr(attrVal) -> {
+        # encounter touched index by sb attr
+        case bocIndices &> bocIndices[ attrKey ] |> nil of { bois } -> 
+         for boi from bois do {
+            touchedIndices[ boi ] = true
+        }
+      }
+    }
+
+    for (kinKey, boKins) from sb._kins do {
+      # TODO impl. all() for boi, to be uniformly duck-typed with bos
+      #      maybe impl. groups()/range() for bos as well ?
+      for boKin from boKins.all() do case boKin of {{ SuperBack: sbKin }} -> {
+        this._cleanout_obj( boKin, sbKin, persist=persist )
+      }
+    }
+
+    # remove from global extent
+    case this._extents[boClass] of { bocExtent } -> {
+      bocExtent[sb.eid] = nil
+    }
+
+    # throw away from all touched global indices
+    for (boi, _) from touchedIndices do boi.(^*)(bo)
+
+    if persist then {
+      # persist the log
+      this.persistOutlet <- (className(bo), sb.eid, ())
+    }
+
+    return nil
+  }
+
   # restore all business objects into RAM from the backing storage, i.e
   # lastest finalized data file. all persistent CUD operations are replayed.
   method _replayHistory( intakeSink ) {
@@ -333,7 +386,7 @@ class DataBack {
         bocIndices = this._indices[ boClass ] |> None
         touchedIndices = {}  # collect touched global indices by attr
         if null(attrChgs) then {  # deletion
-            bo.delete()
+            this._cleanout_obj( bo, sb, persist=false )
             continue
         }
         newReferees = []
@@ -489,35 +542,7 @@ class SuperBack {
   this.(<-@) = (*<-@)
 
   # delete this business object in persistence respect
-  method delete() {
-    boClass = constructor(that)
-    bocIndices = this.db._indices[ boClass ] |> None
-    touchedIndices = {}  # collect touched global indices by attr
-    for (attrKey, attrVal) from this._boScope.attrs() do case attrVal of {
-      # referencing another business object, settle the relationship
-      {{ SuperBack: sbRef }} ->  {
-        this.db._cleanup_rel( that, this, attrKey, attrVal, sbRef )
-      }
-      # handle trivially representable values, including `nil`
-      ;| hasReConRepr(attrVal) -> {
-        # encounter touched index by this attr
-        case bocIndices &> bocIndices[ attrKey ] |> nil of { bois } -> 
-         for boi from bois do {
-            touchedIndices[ boi ] = true
-        }
-      }
-    }
-    # remove from global extent
-    case this.db._extents[boClass] of { bocExtent } -> {
-      bocExtent[this.eid] = nil
-    }
-    # throw away from all touched global indices
-    for (boi, _) from touchedIndices do boi.(^*)(that)
-    # persist the log
-    this.db.persistOutlet <- (className(that), this.eid, ())
-
-    nil  # return nothing
-  }
+  method delete() this.db._cleanout_obj( that, this )
 
 }
 

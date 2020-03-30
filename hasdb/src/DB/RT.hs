@@ -173,33 +173,32 @@ boiHostCtor !pgsCtor _ !obs = do
     let
       this = thisObject $ contextScope $ edh'context pgs
       doIt :: Bool -> STM ()
-      doIt !uniqIdx = do
-        parseIndexSpec pgs args $ \spec@(IndexSpec spec') -> do
-          let specStr = T.pack $ show spec
-              idxName = case Map.lookup "name" kwargs of
-                Nothing                 -> "<index>"
-                Just (EdhString keyStr) -> keyStr
-                Just v                  -> T.pack $ show v
-          modifyTVar' obs
-            $ Map.insert (AttrByName "unique") (EdhBool uniqIdx)
-            . Map.insert (AttrByName "spec") (EdhString specStr)
-            . Map.insert (AttrByName "keys")
-                         (EdhTuple $ attrKeyValue . fst <$> spec')
-            . Map.insert (AttrByName "name") (EdhString idxName)
-            . Map.insert
-                (AttrByName "__repr__")
-                (  EdhString
-                $  (if uniqIdx then "Unique " else "Index ")
-                <> idxName
-                <> " "
-                <> specStr
-                )
-          let boi = if uniqIdx
-                then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
-                else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty
-          boiVar <- newTMVar boi
-          writeTVar (entity'store $ objEntity this) $ toDyn boiVar
-          exitEdhSTM pgs exit $ EdhObject this
+      doIt !uniqIdx = parseIndexSpec pgs args $ \spec@(IndexSpec spec') -> do
+        let specStr = T.pack $ show spec
+            idxName = case Map.lookup "name" kwargs of
+              Nothing                 -> "<index>"
+              Just (EdhString keyStr) -> keyStr
+              Just v                  -> T.pack $ show v
+        modifyTVar' obs
+          $ Map.insert (AttrByName "unique") (EdhBool uniqIdx)
+          . Map.insert (AttrByName "spec") (EdhString specStr)
+          . Map.insert (AttrByName "keys")
+                       (EdhTuple $ attrKeyValue . fst <$> spec')
+          . Map.insert (AttrByName "name") (EdhString idxName)
+          . Map.insert
+              (AttrByName "__repr__")
+              (  EdhString
+              $  (if uniqIdx then "Unique " else "Index ")
+              <> idxName
+              <> " "
+              <> specStr
+              )
+        let boi = if uniqIdx
+              then UniqueIndex $ UniqBoIdx spec TreeMap.empty Map.empty
+              else NonUniqueIndex $ NouBoIdx spec TreeMap.empty Map.empty
+        boiVar <- newTMVar boi
+        writeTVar (entity'store $ objEntity this) $ toDyn boiVar
+        exitEdhSTM pgs exit $ EdhObject this
     contEdhSTM $ case Map.lookup "unique" kwargs of
       Nothing          -> doIt False
       Just (EdhBool b) -> doIt b
