@@ -1,9 +1,12 @@
+{#
+ # Machinery to build the exoskeleton for add-on persistence to
+ # entity/relationship business objects.
+ #}
 
 import (
 
   # re-export these
   className, 
-  BoIndex,
 
   # don't re-export these
   newBo as _newBo, 
@@ -11,11 +14,84 @@ import (
   streamFromDisk as _streamFromDisk, 
 
   **_  # consume (drop) extra artifacts exported there, don't fail
-) # 'db/ehi' is a host module installed by Haskell code,
-  # relative import can only import Edh source modules
-  # from local filesystem, absolute import needed here.
- 'db/ehi'
+) 'db/RT'
 
+
+import (
+
+  # extend the host classes as to be duck-typed collection classes
+  BoSet as _BoSet,
+  BoIndex as _BoIndex,
+  BuIndex as _BuIndex,
+
+  **_  # consume (drop) extra artifacts exported there, don't fail
+) 'db/Storage/InMem'
+
+# duck-typed KinColection, concrete implementations:
+#  * BoSet    - unordered set
+#  * BoIndex  - sorted by index key attributes, non-unique
+#  * BuIndex  - sorted by index key attributes, unique
+class KinCollection {
+
+  # to enumerate all relatipnship business objects one by one
+  generator all() error('abstract method')
+
+  # to enumerate all relationship business objects group by group,
+  # together with the index key attributes, in order of the index.
+  generator groups() error('abstract method')
+
+  # to enumerate all relationship business objects one by one,
+  # together with the index key attributes, in order of the index.
+  generator range() error('abstract method')
+
+}
+
+class BoSet {
+  # no ctor arg
+  extends _BoSet()
+
+  # to satisfy the duck typing criteria
+  generator groups() {
+    for bo from super.all() do yield pkargs( (), (bo,) )
+  }
+  generator range() {
+    for bo from super.all() do yield pkargs( (), bo )
+  }
+}
+
+class BoIndex {
+  # pass verbatim ctor args to the super host class
+  method __init__(***apk) extends _BoIndex(***apk)
+
+  # to satisfy the duck typing criteria
+  generator all() {
+    for ( k, g ) from super.groups() do for bo from g do {
+      yield bo
+    }
+  }
+  generator range() {
+    for ( k, g ) from super.groups() do for bo from g do {
+      yield pkargs( k, bo )
+    }
+  }
+}
+
+class BuIndex {
+  # pass verbatim ctor args to the super host class
+  method __init__(***apk) extends _BuIndex(***apk)
+
+  # to satisfy the duck typing criteria
+  generator all() {
+    for ( k, bo ) from super.groups() do {
+      yield bo
+    }
+  }
+  generator groups() {
+    for ( k, bo ) from super.groups() do {
+      yield pkargs( k, (bo,) )
+    }
+  }
+}
 
 # this tells persistent attributes from transient ones
 method hasReConRepr( attrVal ) {
@@ -119,7 +195,9 @@ class DataBack {
   # (to an attribute of the db app), so it tends to run within a tx already,
   # we mark it with `ai` for extra certain.
   method createIndex( idxAttr, boClass, indexSpec, unique=false ) ai {
-    idx = BoIndex( indexSpec, unique=unique, name=''++idxAttr++'@'++boClass )
+    idx = if unique
+      then BuIndex( indexSpec, name=''++idxAttr++'@'++boClass )
+      else BoIndex( indexSpec, name=''++idxAttr++'@'++boClass )
     bocIndices = this._indices[boClass] |>    (
                  this._indices[boClass] = {} )
     for keyAttr from idx.keys do idx => (
@@ -127,7 +205,7 @@ class DataBack {
       bocIndices[ keyAttr ] = [] )
     )
     this$idxAttr = idx
-    nil  # return nothing
+    return nil
   }
 
   # the last entity identifier allocated
@@ -326,8 +404,6 @@ console.debug<| 'persist dump '++className(bo)++' # '++sb.eid
     }
 
     for (kinKey, boKins) from sb._kins do {
-      # TODO impl. all() for boi, to be uniformly duck-typed with bos
-      #      maybe impl. groups()/range() for bos as well ?
       for boKin from boKins.all() do case boKin of {{ SuperBack: sbKin }} -> {
         this._cleanout_obj( boKin, sbKin, persist=persist )
       }
@@ -470,7 +546,10 @@ class SuperBack {
   # BoSet object created by `createKinSet()`, resides in the referee's SuperBack
   # super object, available as a super attribute there from the referee object.
   method createKinIndex ( kinAttr, relClass, relAttr, indexSpec, unique=false ) {
-    idx = BoIndex( indexSpec, unique=unique )
+    idxName = kinAttr++'@'++className(that)++'<-'++relClass++'.'++relAttr
+    idx = if unique
+      then BuIndex( indexSpec, name=idxName )
+      else BoIndex( indexSpec, name=idxName )
     # chain the 2 assignments into single transaction
     this._kins[ relClass:(''++relAttr) ] = (
       # will be available from `that` as super attr
@@ -490,7 +569,7 @@ class SuperBack {
   # BoSet object created by `createKinSet()`, resides in the referee's SuperBack
   # super object, available as a super attribute there from the referee object.
   method createKinSet ( kinAttr, relClass, relAttr ) {
-    ks = BoSet()  # TODO impl. host class BoSet
+    ks = BoSet()
     # chain the 2 assignments into single transaction
     this._kins[ relClass:(''++relAttr) ] = (
       # will be available from `that` as super attr

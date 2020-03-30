@@ -5,6 +5,8 @@ import           Prelude
 -- import           Debug.Trace
 
 import           Control.Monad
+import           Control.Monad.Reader
+import           Control.Exception
 import           Control.Concurrent.STM
 
 import           Data.Text                      ( Text )
@@ -12,13 +14,114 @@ import qualified Data.Text                     as T
 import qualified Data.HashMap.Strict           as Map
 import qualified Data.Map.Strict               as TreeMap
 import qualified Data.HashSet                  as Set
+import           Data.Dynamic
 
 import qualified DB.Storage.InMem.TreeIdx      as TI
 
 import           Language.Edh.EHI
 
 
+-- | Business Object Set
 type BoSet = Set.HashSet Object
+
+-- | host constructor BoSet()
+bosHostCtor
+  :: EdhProgState
+  -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
+  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
+  -> STM ()
+bosHostCtor !pgsCtor _ !obs = do
+  let !scope = contextScope $ edh'context pgsCtor
+      !this  = thisObject scope
+  bosVar <- newTMVar (Set.empty :: BoSet)
+  writeTVar (entity'store $ objEntity this) $ toDyn bosVar
+  modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
+    [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp args
+    | (nm, vc, hp, args) <-
+      [ ( "<-"
+        , EdhMethod
+        , bosAddProc
+        , PackReceiver [RecvArg "bo" Nothing Nothing]
+        )
+      , ( "^*"
+        , EdhMethod
+        , bosThrowAwayProc
+        , PackReceiver [RecvArg "bo" Nothing Nothing]
+        )
+      , ("all", EdhGnrtor, bosAllProc, PackReceiver [])
+      ]
+    ]
+
+ where
+
+  bosAddProc :: EdhProcedure
+  bosAddProc (ArgsPack !args !kwargs) !exit = case args of
+    [EdhObject !bo] | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs UsageError $ "bug: this is not a bos : " <> T.pack
+              (show esd)
+          Just (bosVar :: TMVar BoSet) -> do
+            bos <- takeTMVar bosVar
+            -- catching stm exceptions here is enough, no Edh action involved
+            flip
+                catchSTM
+                (\(e :: SomeException) -> tryPutTMVar bosVar bos >> throwSTM e)
+              $ do
+                  putTMVar bosVar $ Set.insert bo bos
+                  exitEdhSTM pgs exit nil
+    _ -> throwEdh UsageError "Invalid args to bosAddProc"
+
+  bosThrowAwayProc :: EdhProcedure
+  bosThrowAwayProc (ArgsPack !args !kwargs) !exit = case args of
+    [EdhObject !bo] | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs UsageError $ "bug: this is not a bos : " <> T.pack
+              (show esd)
+          Just (bosVar :: TMVar BoSet) -> do
+            bos <- takeTMVar bosVar
+            -- catching stm exceptions here is enough, no Edh action involved
+            flip
+                catchSTM
+                (\(e :: SomeException) -> tryPutTMVar bosVar bos >> throwSTM e)
+              $ do
+                  putTMVar bosVar $ Set.delete bo bos
+                  exitEdhSTM pgs exit nil
+    _ -> throwEdh UsageError "Invalid args to bosThrowAwayProc"
+
+  -- | host generator bos.all()
+  bosAllProc :: EdhProcedure
+  bosAllProc _ !exit = do
+    pgs <- ask
+    case generatorCaller $ edh'context pgs of
+      Nothing -> throwEdh UsageError "Can only be called as generator"
+      Just (!pgs', !iter'cb) -> do
+        let yieldResults :: [Object] -> STM ()
+            yieldResults [] = exitEdhSTM pgs exit nil
+            yieldResults (bo : rest) =
+              runEdhProc pgs' $ iter'cb (EdhObject bo) $ \_ -> yieldResults rest
+        contEdhSTM $ do
+          let this = thisObject $ contextScope $ edh'context pgs
+              !es  = entity'store $ objEntity this
+          esd <- readTVar es
+          case fromDynamic esd of
+            Nothing ->
+              throwEdhSTM pgs UsageError $ "bug: this is not a bos : " <> T.pack
+                (show esd)
+            Just (bosVar :: TMVar BoSet) -> do
+              bos <- readTMVar bosVar
+              yieldResults $ Set.toList bos
 
 
 type AscSort = Bool
@@ -45,33 +148,33 @@ indexFieldSortOrderSpec pgs !ordSpec !exit = case ordSpec of
   "ascending"  -> exit True
   "descending" -> exit False
   _ ->
-    throwEdhSTM pgs EvalError $ "Invalid index field sorting order: " <> ordSpec
+    throwEdhSTM pgs UsageError
+      $  "Invalid index field sorting order: "
+      <> ordSpec
 
 
 parseIndexSpec :: EdhProgState -> [EdhValue] -> (IndexSpec -> STM ()) -> STM ()
-parseIndexSpec pgs !args !exit = do
-  case args of
-    [EdhExpr _ (AttrExpr (DirectRef (NamedAttr !attrName))) _] ->
-      doExit [(AttrByName attrName, True)]
-    [EdhExpr _ (InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (AttrExpr (DirectRef (NamedAttr ordSpec)))) _]
-      -> indexFieldSortOrderSpec pgs ordSpec
-        $ \asc -> doExit [(AttrByName attrName, asc)]
-    [EdhExpr _ (InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (LitExpr (BoolLiteral !asc))) _]
-      -> doExit [(AttrByName attrName, asc)]
-    [EdhExpr _ (TupleExpr !fieldSpecs) _] ->
-      seqcontSTM (fieldFromExpr <$> fieldSpecs) doExit
-    [EdhTuple !fieldSpecs  ] -> seqcontSTM (fieldFromVal <$> fieldSpecs) doExit
-    [EdhList  (List _ !fsl)] -> do
-      fieldSpecs <- readTVar fsl
-      seqcontSTM (fieldFromVal <$> fieldSpecs) doExit
-    _ ->
-      throwEdhSTM pgs EvalError $ "Invalid index specification: " <> T.pack
-        (show args)
+parseIndexSpec pgs !args !exit = case args of
+  [EdhExpr _ (AttrExpr (DirectRef (NamedAttr !attrName))) _] ->
+    doExit [(AttrByName attrName, True)]
+  [EdhExpr _ (InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (AttrExpr (DirectRef (NamedAttr ordSpec)))) _]
+    -> indexFieldSortOrderSpec pgs ordSpec
+      $ \asc -> doExit [(AttrByName attrName, asc)]
+  [EdhExpr _ (InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (LitExpr (BoolLiteral !asc))) _]
+    -> doExit [(AttrByName attrName, asc)]
+  [EdhExpr _ (TupleExpr !fieldSpecs) _] ->
+    seqcontSTM (fieldFromExpr <$> fieldSpecs) doExit
+  [EdhTuple !fieldSpecs  ] -> seqcontSTM (fieldFromVal <$> fieldSpecs) doExit
+  [EdhList  (List _ !fsl)] -> do
+    fieldSpecs <- readTVar fsl
+    seqcontSTM (fieldFromVal <$> fieldSpecs) doExit
+  _ -> throwEdhSTM pgs UsageError $ "Invalid index specification: " <> T.pack
+    (show args)
  where
   doExit :: [(AttrKey, AscSort)] -> STM ()
   doExit !spec = do
     when (null spec)
-      $ throwEdhSTM pgs EvalError "Index specification can not be empty"
+      $ throwEdhSTM pgs UsageError "Index specification can not be empty"
     exit $ IndexSpec spec
   fieldFromExpr :: Expr -> ((AttrKey, AscSort) -> STM ()) -> STM ()
   fieldFromExpr !x !exit' = case x of
@@ -87,7 +190,7 @@ parseIndexSpec pgs !args !exit = do
         $ \asc -> exit' (AttrByName attrName, asc)
     TupleExpr [AttrExpr (DirectRef (NamedAttr !attrName)), LitExpr (BoolLiteral !asc)]
       -> exit' (AttrByName attrName, asc)
-    _ -> throwEdhSTM pgs EvalError $ "Invalid index field spec: " <> T.pack
+    _ -> throwEdhSTM pgs UsageError $ "Invalid index field spec: " <> T.pack
       (show x)
   fieldFromVal :: EdhValue -> ((AttrKey, AscSort) -> STM ()) -> STM ()
   fieldFromVal !x !exit' = case x of
@@ -96,13 +199,13 @@ parseIndexSpec pgs !args !exit = do
     EdhTuple [EdhString !attrName, EdhBool !asc] ->
       exit' (AttrByName attrName, asc)
     EdhString !attrName -> exit' (AttrByName attrName, True)
-    EdhPair (EdhString !attrName) (EdhString !ordSpec) -> do
+    EdhPair (EdhString !attrName) (EdhString !ordSpec) ->
       indexFieldSortOrderSpec pgs ordSpec
         $ \asc -> exit' (AttrByName attrName, asc)
-    EdhTuple [EdhString !attrName, EdhString !ordSpec] -> do
+    EdhTuple [EdhString !attrName, EdhString !ordSpec] ->
       indexFieldSortOrderSpec pgs ordSpec
         $ \asc -> exit' (AttrByName attrName, asc)
-    _ -> throwEdhSTM pgs EvalError $ "Invalid index field spec: " <> T.pack
+    _ -> throwEdhSTM pgs UsageError $ "Invalid index field spec: " <> T.pack
       (show x)
 
 
@@ -126,11 +229,11 @@ edhIdxKeyVal !pgs (EdhTuple vs) !exit =
 -- list is mutable, meaning can change without going through entity attr
 -- update, don't support it unless sth else is figured out
 edhIdxKeyVal !pgs !val _ =
-  throwEdhSTM pgs EvalError $ "Invalid value type to be indexed: " <> T.pack
+  throwEdhSTM pgs UsageError $ "Invalid value type to be indexed: " <> T.pack
     (show $ edhTypeOf val)
 
 edhIdxKeyVals
-  :: EdhProgState -> EdhValue -> ((Maybe [Maybe IdxKeyVal]) -> STM ()) -> STM ()
+  :: EdhProgState -> EdhValue -> (Maybe [Maybe IdxKeyVal] -> STM ()) -> STM ()
 edhIdxKeyVals _ EdhNil        !exit = exit Nothing
 edhIdxKeyVals _ (EdhTuple []) !exit = exit Nothing
 edhIdxKeyVals pgs (EdhTuple kvs) !exit =
@@ -181,7 +284,7 @@ extractIndexKey
 extractIndexKey !pgs spec@(IndexSpec !spec') !bo !exit =
   seqcontSTM (extractField . fst <$> spec') $ exit . IndexKey spec
  where
-  extractField :: AttrKey -> ((Maybe IdxKeyVal) -> STM ()) -> STM ()
+  extractField :: AttrKey -> (Maybe IdxKeyVal -> STM ()) -> STM ()
   extractField !k !exit' =
     lookupEdhObjAttr pgs bo k >>= \v -> edhIdxKeyVal pgs v exit'
 
@@ -189,52 +292,8 @@ edhValueOfIndexKey :: IndexKey -> EdhValue
 edhValueOfIndexKey (IndexKey _ ikvs) = EdhTuple $ edhValOfIdxKey <$> ikvs
 
 
--- | Unique Business Object Index
-data UniqBoIdx = UniqBoIdx {
-      spec'of'uniq'idx :: !IndexSpec
-      -- TODO find and use an effecient container with fast entry key update
-      --      it's less optimal as using two maps here for now
-    , tree'of'uniq'idx :: !(TreeMap.Map IndexKey Object)
-    , reverse'of'uniq'idx :: !(Map.HashMap Object IndexKey)
-  }
-
-reindexUniqBusObj
-  :: Text
-  -> UniqBoIdx
-  -> EdhProgState
-  -> Object
-  -> (UniqBoIdx -> STM ())
-  -> STM ()
-reindexUniqBusObj idxName uboi@(UniqBoIdx !spec !tree !rvrs) !pgs !bo !exit =
-  extractIndexKey pgs spec bo $ \newKey -> case TreeMap.lookup newKey tree' of
-    Just _ ->
-      throwEdhSTM pgs EvalError
-        $  "Violation of unique constraint on index: "
-        <> idxName
-        <> " "
-        <> T.pack (show spec)
-    Nothing -> exit uboi { tree'of'uniq'idx    = TreeMap.insert newKey bo tree'
-                         , reverse'of'uniq'idx = Map.insert bo newKey rvrs
-                         }
- where
-  tree' = case Map.lookup bo rvrs of
-    Nothing     -> tree
-    Just oldKey -> TreeMap.delete oldKey tree
-
-throwAwayUniqIdxObj
-  :: UniqBoIdx -> EdhProgState -> Object -> (UniqBoIdx -> STM ()) -> STM ()
-throwAwayUniqIdxObj uboi@(UniqBoIdx _ !tree !rvrs) _ !bo !exit = exit uboi
-  { tree'of'uniq'idx    = tree'
-  , reverse'of'uniq'idx = Map.delete bo rvrs
-  }
- where
-  tree' = case Map.lookup bo rvrs of
-    Nothing     -> tree
-    Just oldKey -> TreeMap.delete oldKey tree
-
-
 -- | Non-Unique Business Object Index
-data NouBoIdx = NouBoIdx {
+data BoIndex = BoIndex {
       spec'of'nou'idx :: !IndexSpec
       -- TODO find and use an effecient container with fast entry key update
       --      it's less optimal as using two maps here for now
@@ -242,14 +301,15 @@ data NouBoIdx = NouBoIdx {
     , reverse'of'nou'idx :: !(Map.HashMap Object IndexKey)
   }
 
-reindexNouBusObj
-  :: Text
-  -> NouBoIdx
-  -> EdhProgState
-  -> Object
-  -> (NouBoIdx -> STM ())
-  -> STM ()
-reindexNouBusObj _idxName boi@(NouBoIdx !spec !tree !rvrs) !pgs !bo !exit =
+lookupBoIndex :: BoIndex -> [Maybe IdxKeyVal] -> STM EdhValue
+lookupBoIndex (BoIndex !spec !tree _) !idxKeyVals =
+  case TreeMap.lookup (IndexKey spec idxKeyVals) tree of
+    Nothing   -> return EdhNil
+    Just !bos -> return $ EdhTuple $ EdhObject <$> Set.toList bos
+
+reindexBusObj
+  :: EdhProgState -> BoIndex -> Object -> (BoIndex -> STM ()) -> STM ()
+reindexBusObj !pgs boi@(BoIndex !spec !tree !rvrs) !bo !exit =
   extractIndexKey pgs spec bo $ \newKey -> exit boi
     { tree'of'nou'idx    = TreeMap.alter putBoIn newKey tree'
     , reverse'of'nou'idx = Map.insert bo newKey rvrs
@@ -263,9 +323,9 @@ reindexNouBusObj _idxName boi@(NouBoIdx !spec !tree !rvrs) !pgs !bo !exit =
     Nothing     -> tree
     Just oldKey -> TreeMap.update (Just . Set.delete bo) oldKey tree
 
-throwAwayNouIdxObj
-  :: NouBoIdx -> EdhProgState -> Object -> (NouBoIdx -> STM ()) -> STM ()
-throwAwayNouIdxObj boi@(NouBoIdx _ !tree !rvrs) _ !bo !exit = exit boi
+throwAwayIdxObj
+  :: EdhProgState -> BoIndex -> Object -> (BoIndex -> STM ()) -> STM ()
+throwAwayIdxObj _ boi@(BoIndex _ !tree !rvrs) !bo !exit = exit boi
   { tree'of'nou'idx    = tree'
   , reverse'of'nou'idx = Map.delete bo rvrs
   }
@@ -274,65 +334,409 @@ throwAwayNouIdxObj boi@(NouBoIdx _ !tree !rvrs) _ !bo !exit = exit boi
     Nothing     -> tree
     Just oldKey -> TreeMap.update (Just . Set.delete bo) oldKey tree
 
+listIdxGroups
+  :: BoIndex
+  -> Maybe [Maybe IdxKeyVal]
+  -> Maybe [Maybe IdxKeyVal]
+  -> STM [(IndexKey, EdhValue)]
+listIdxGroups (BoIndex !spec !tree _) !minKeyVals !maxKeyVals =
+  return $ (<$> seg) $ \(k, bos) -> (k, EdhTuple $ EdhObject <$> Set.toList bos)
+  where seg = indexKeyRange spec tree minKeyVals maxKeyVals
 
-data BoIndex = UniqueIndex !UniqBoIdx | NonUniqueIndex !NouBoIdx
+-- | host constructor BoIndex( indexSpec )
+boiHostCtor
+  :: EdhProgState
+  -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
+  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
+  -> STM ()
+boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
+  let !scope = contextScope $ edh'context pgsCtor
+      !this  = thisObject scope
+  parseIndexSpec pgsCtor ctorArgs $ \spec@(IndexSpec spec') -> do
+    let specStr = T.pack $ show spec
+        idxName = case Map.lookup "name" ctorKwargs of
+          Nothing                 -> "<index>"
+          Just (EdhString keyStr) -> keyStr
+          Just v                  -> T.pack $ show v
+    modifyTVar' obs $ Map.union $ Map.fromList
+      [ (AttrByName "spec", EdhString specStr)
+      , (AttrByName "keys", EdhTuple $ attrKeyValue . fst <$> spec')
+      , (AttrByName "name", EdhString idxName)
+      , ( AttrByName "__repr__"
+        , EdhString $ "Index " <> idxName <> " " <> specStr
+        )
+      ]
+    let boi = BoIndex spec TreeMap.empty Map.empty
+    boiVar <- newTMVar boi
+    writeTVar (entity'store $ objEntity this) $ toDyn boiVar
+  modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
+    [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
+    | (nm, vc, hp, mthArgs) <-
+      [ ( "<-"
+        , EdhMethod
+        , boiReindexProc
+        , PackReceiver [RecvArg "bo" Nothing Nothing]
+        )
+      , ( "^*"
+        , EdhMethod
+        , boiThrowAwayProc
+        , PackReceiver [RecvArg "bo" Nothing Nothing]
+        )
+      , ( "[]"
+        , EdhMethod
+        , boiLookupProc
+        , PackReceiver [RecvArg "keyValues" Nothing Nothing]
+        )
+      , ( "groups"
+        , EdhGnrtor
+        , boiGroupsProc
+        , PackReceiver
+          [ RecvArg "min" Nothing (Just (GodSendExpr edhNone))
+          , RecvArg "max" Nothing (Just (GodSendExpr edhNone))
+          ]
+        )
+      ]
+    ]
 
-indexSpecOf :: BoIndex -> IndexSpec
-indexSpecOf (UniqueIndex    (UniqBoIdx spec _ _)) = spec
-indexSpecOf (NonUniqueIndex (NouBoIdx  spec _ _)) = spec
+ where
+
+  boiReindexProc :: EdhProcedure
+  boiReindexProc (ArgsPack !args !kwargs) !exit = case args of
+    [EdhObject !bo] | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs UsageError $ "bug: this is not a boi : " <> T.pack
+              (show esd)
+          Just (boiVar :: TMVar BoIndex) -> do
+-- index update is expensive, use TMVar to avoid computation being retried
+            boi <- takeTMVar boiVar
+            let tryAct !pgs' !exit' = reindexBusObj pgs' boi bo $ \boi' -> do
+                  putTMVar boiVar boi'
+                  exitEdhSTM pgs' exit' nil
+            edhCatchSTM pgs tryAct exit $ \_exv _recover rethrow -> do
+              void $ tryPutTMVar boiVar boi
+              rethrow
+    _ -> throwEdh UsageError "Invalid args to boiReindexProc"
+
+  boiThrowAwayProc :: EdhProcedure
+  boiThrowAwayProc (ArgsPack !args !kwargs) !exit = case args of
+    [EdhObject !bo] | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs UsageError $ "bug: this is not a boi : " <> T.pack
+              (show esd)
+          Just (boiVar :: TMVar BoIndex) -> do
+-- index update is expensive, use TMVar to avoid computation being retried
+            boi <- takeTMVar boiVar
+            let tryAct !pgs' !exit' = throwAwayIdxObj pgs' boi bo $ \boi' -> do
+                  putTMVar boiVar boi'
+                  exitEdhSTM pgs' exit' nil
+            edhCatchSTM pgs tryAct exit $ \_exv _recover rethrow -> do
+              void $ tryPutTMVar boiVar boi
+              rethrow
+    _ -> throwEdh UsageError "Invalid args to boiThrowAwayProc"
+
+  boiLookupProc :: EdhProcedure
+  boiLookupProc (ArgsPack !args !kwargs) !exit = case args of
+    [keyValues] | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs UsageError $ "bug: this is not a boi : " <> T.pack
+              (show esd)
+          Just (boiVar :: TMVar BoIndex) -> do
+            boi <- readTMVar boiVar
+            edhIdxKeyVals pgs keyValues $ \case
+              Nothing          -> exitEdhSTM pgs exit nil
+              Just !idxKeyVals -> do
+                result <- lookupBoIndex boi idxKeyVals
+                exitEdhSTM pgs exit result
+    _ -> throwEdh UsageError "Invalid args to boiLookupProc"
+
+  -- | host generator boi.groups( min=None, max=None )
+  boiGroupsProc :: EdhProcedure
+  boiGroupsProc !apk !exit = do
+    pgs <- ask
+    let this = thisObject $ contextScope $ edh'context pgs
+        es   = entity'store $ objEntity this
+    case generatorCaller $ edh'context pgs of
+      Nothing -> throwEdh UsageError "Can only be called as generator"
+      Just (!pgs', !iter'cb) -> do
+        let
+          yieldResults :: [(IndexKey, EdhValue)] -> STM ()
+          yieldResults [] = exitEdhSTM pgs exit nil
+          yieldResults ((ik, v) : rest) =
+            runEdhProc pgs'
+              $ iter'cb
+                  (EdhArgsPack
+                    (ArgsPack [edhValueOfIndexKey ik, noneNil v] Map.empty)
+                  )
+              $ \_ -> yieldResults rest
+        case parseIdxRng apk of
+          Left argsErr -> throwEdh UsageError $ argsErr <> " for boiGroupsProc"
+          Right (minKey, maxKey) -> contEdhSTM $ do
+            esd <- readTVar es
+            case fromDynamic esd of
+              Nothing ->
+                throwEdhSTM pgs UsageError
+                  $  "bug: this is not a boi : "
+                  <> T.pack (show esd)
+              Just (boiVar :: TMVar BoIndex) -> do
+                boi <- readTMVar boiVar
+                edhIdxKeyVals pgs minKey $ \minKeyVals ->
+                  edhIdxKeyVals pgs maxKey $ \maxKeyVals -> do
+                    result <- listIdxGroups boi minKeyVals maxKeyVals
+                    yieldResults result
 
 
-reindexBusinessObject
-  :: Text -> BoIndex -> EdhProgState -> Object -> (BoIndex -> STM ()) -> STM ()
-reindexBusinessObject idxName (UniqueIndex !boi) pgs bo !exit =
-  reindexUniqBusObj idxName boi pgs bo $ exit . UniqueIndex
-reindexBusinessObject idxName (NonUniqueIndex !boi) pgs bo !exit =
-  reindexNouBusObj idxName boi pgs bo $ exit . NonUniqueIndex
+-- | Unique Business Object Index
+data BuIndex = BuIndex {
+      spec'of'uniq'idx :: !IndexSpec
+      -- TODO find and use an effecient container with fast entry key update
+      --      it's less optimal as using two maps here for now
+    , tree'of'uniq'idx :: !(TreeMap.Map IndexKey Object)
+    , reverse'of'uniq'idx :: !(Map.HashMap Object IndexKey)
+  }
 
-throwAwayIndexedObject
-  :: BoIndex -> EdhProgState -> Object -> (BoIndex -> STM ()) -> STM ()
-throwAwayIndexedObject (UniqueIndex !boi) pgs bo !exit =
-  throwAwayUniqIdxObj boi pgs bo $ exit . UniqueIndex
-throwAwayIndexedObject (NonUniqueIndex !boi) pgs bo !exit =
-  throwAwayNouIdxObj boi pgs bo $ exit . NonUniqueIndex
-
-
-lookupBoIndex :: BoIndex -> [Maybe IdxKeyVal] -> STM EdhValue
-lookupBoIndex (UniqueIndex (UniqBoIdx !spec !tree _)) !idxKeyVals =
+lookupBuIndex :: BuIndex -> [Maybe IdxKeyVal] -> STM EdhValue
+lookupBuIndex (BuIndex !spec !tree _) !idxKeyVals =
   case TreeMap.lookup (IndexKey spec idxKeyVals) tree of
     Nothing  -> return EdhNil
     Just !bo -> return $ EdhObject bo
-lookupBoIndex (NonUniqueIndex (NouBoIdx !spec !tree _)) !idxKeyVals =
-  case TreeMap.lookup (IndexKey spec idxKeyVals) tree of
-    Nothing   -> return EdhNil
-    Just !bos -> return $ EdhTuple $ EdhObject <$> Set.toList bos
 
+reindexUniqObj
+  :: EdhProgState -> Text -> BuIndex -> Object -> (BuIndex -> STM ()) -> STM ()
+reindexUniqObj !pgs idxName bui@(BuIndex !spec !tree !rvrs) !bo !exit =
+  extractIndexKey pgs spec bo $ \newKey -> case TreeMap.lookup newKey tree' of
+    Just _ ->
+      throwEdhSTM pgs EdhException -- todo use db specific exception here ?
+        $  "Violation of unique constraint on index: "
+        <> idxName
+        <> " "
+        <> T.pack (show spec)
+    Nothing -> exit bui { tree'of'uniq'idx    = TreeMap.insert newKey bo tree'
+                        , reverse'of'uniq'idx = Map.insert bo newKey rvrs
+                        }
+ where
+  tree' = case Map.lookup bo rvrs of
+    Nothing     -> tree
+    Just oldKey -> TreeMap.delete oldKey tree
 
-listBoIndexGroups
-  :: BoIndex
+throwAwayUniqObj
+  :: BuIndex -> EdhProgState -> Object -> (BuIndex -> STM ()) -> STM ()
+throwAwayUniqObj bui@(BuIndex _ !tree !rvrs) _ !bo !exit = exit bui
+  { tree'of'uniq'idx    = tree'
+  , reverse'of'uniq'idx = Map.delete bo rvrs
+  }
+ where
+  tree' = case Map.lookup bo rvrs of
+    Nothing     -> tree
+    Just oldKey -> TreeMap.delete oldKey tree
+
+listBuIndexRange
+  :: BuIndex
   -> Maybe [Maybe IdxKeyVal]
   -> Maybe [Maybe IdxKeyVal]
   -> STM [(IndexKey, EdhValue)]
-listBoIndexGroups (UniqueIndex (UniqBoIdx !spec !tree _)) !minKeyVals !maxKeyVals
-  = return $ (<$> seg) $ \(k, bo) -> (k, EdhTuple [EdhObject bo])
-  where seg = indexKeyRange spec tree minKeyVals maxKeyVals
-listBoIndexGroups (NonUniqueIndex (NouBoIdx !spec !tree _)) !minKeyVals !maxKeyVals
-  = return $ (<$> seg) $ \(k, bos) ->
-    (k, EdhTuple $ EdhObject <$> Set.toList bos)
+listBuIndexRange (BuIndex !spec !tree _) !minKeyVals !maxKeyVals =
+  return $ (<$> seg) $ \(k, bo) -> (k, EdhObject bo)
   where seg = indexKeyRange spec tree minKeyVals maxKeyVals
 
-listBoIndexRange
-  :: BoIndex
-  -> Maybe [Maybe IdxKeyVal]
-  -> Maybe [Maybe IdxKeyVal]
-  -> STM [(IndexKey, EdhValue)]
-listBoIndexRange (UniqueIndex (UniqBoIdx !spec !tree _)) !minKeyVals !maxKeyVals
-  = return $ (<$> seg) $ \(k, bo) -> (k, EdhObject bo)
-  where seg = indexKeyRange spec tree minKeyVals maxKeyVals
-listBoIndexRange (NonUniqueIndex (NouBoIdx !spec !tree _)) !minKeyVals !maxKeyVals
-  = return $ (`concatMap` seg) $ \(k, bos) ->
-    [ (k, EdhObject bo) | bo <- Set.toList bos ]
-  where seg = indexKeyRange spec tree minKeyVals maxKeyVals
+-- | host constructor BuIndex( indexSpec )
+buiHostCtor
+  :: EdhProgState
+  -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
+  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
+  -> STM ()
+buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
+  let !scope = contextScope $ edh'context pgsCtor
+      !this  = thisObject scope
+  parseIndexSpec pgsCtor ctorArgs $ \spec@(IndexSpec spec') -> do
+    let specStr = T.pack $ show spec
+        idxName = case Map.lookup "name" ctorKwargs of
+          Nothing                 -> "<unique-index>"
+          Just (EdhString keyStr) -> keyStr
+          Just v                  -> T.pack $ show v
+    modifyTVar' obs $ Map.union $ Map.fromList
+      [ (AttrByName "spec", EdhString specStr)
+      , (AttrByName "keys", EdhTuple $ attrKeyValue . fst <$> spec')
+      , (AttrByName "name", EdhString idxName)
+      , ( AttrByName "__repr__"
+        , EdhString $ "UniqueIndex " <> idxName <> " " <> specStr
+        )
+      ]
+    let bui = BuIndex spec TreeMap.empty Map.empty
+    buiVar <- newTMVar bui
+    writeTVar (entity'store $ objEntity this) $ toDyn buiVar
+  modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
+    [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
+    | (nm, vc, hp, mthArgs) <-
+      [ ( "<-"
+        , EdhMethod
+        , buiReindexProc
+        , PackReceiver [RecvArg "bo" Nothing Nothing]
+        )
+      , ( "^*"
+        , EdhMethod
+        , buiThrowAwayProc
+        , PackReceiver [RecvArg "bo" Nothing Nothing]
+        )
+      , ( "[]"
+        , EdhMethod
+        , buiLookupProc
+        , PackReceiver [RecvArg "keyValues" Nothing Nothing]
+        )
+      , ( "range"
+        , EdhGnrtor
+        , buiRangeProc
+        , PackReceiver
+          [ RecvArg "min" Nothing (Just (GodSendExpr edhNone))
+          , RecvArg "max" Nothing (Just (GodSendExpr edhNone))
+          ]
+        )
+      ]
+    ]
+
+ where
+
+  buiName :: STM Text
+  buiName = Map.lookup (AttrByName "name") <$> readTVar obs >>= \case
+    Nothing               -> return "<unique-index>"
+    Just (EdhString name) -> return name
+    Just v                -> return $ T.pack $ show v
+
+  buiReindexProc :: EdhProcedure
+  buiReindexProc (ArgsPack !args !kwargs) !exit = case args of
+    [EdhObject !bo] | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs UsageError $ "bug: this is not a bui : " <> T.pack
+              (show esd)
+          Just (buiVar :: TMVar BuIndex) -> do
+            idxName <- buiName
+-- index update is expensive, use TMVar to avoid computation being retried
+            bui     <- takeTMVar buiVar
+            let tryAct !pgs' !exit' =
+                  reindexUniqObj pgs' idxName bui bo $ \bui' -> do
+                    putTMVar buiVar bui'
+                    exitEdhSTM pgs' exit' nil
+            edhCatchSTM pgs tryAct exit $ \_exv _recover rethrow -> do
+              void $ tryPutTMVar buiVar bui
+              rethrow
+    _ -> throwEdh UsageError "Invalid args to buiReindexProc"
+
+  buiThrowAwayProc :: EdhProcedure
+  buiThrowAwayProc (ArgsPack !args !kwargs) !exit = case args of
+    [EdhObject !bo] | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs UsageError $ "bug: this is not a bui : " <> T.pack
+              (show esd)
+          Just (buiVar :: TMVar BuIndex) -> do
+-- index update is expensive, use TMVar to avoid computation being retried
+            bui <- takeTMVar buiVar
+            let tryAct !pgs' !exit' = throwAwayUniqObj bui pgs' bo $ \bui' ->
+                  do
+                    putTMVar buiVar bui'
+                    exitEdhSTM pgs' exit' nil
+            edhCatchSTM pgs tryAct exit $ \_exv _recover rethrow -> do
+              void $ tryPutTMVar buiVar bui
+              rethrow
+    _ -> throwEdh UsageError "Invalid args to buiThrowAwayProc"
+
+  buiLookupProc :: EdhProcedure
+  buiLookupProc (ArgsPack !args !kwargs) !exit = case args of
+    [keyValues] | Map.null kwargs -> do
+      pgs <- ask
+      let this = thisObject $ contextScope $ edh'context pgs
+          es   = entity'store $ objEntity this
+      contEdhSTM $ do
+        esd <- readTVar es
+        case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs UsageError $ "bug: this is not a bui : " <> T.pack
+              (show esd)
+          Just (buiVar :: TMVar BuIndex) -> do
+            bui <- readTMVar buiVar
+            edhIdxKeyVals pgs keyValues $ \case
+              Nothing          -> exitEdhSTM pgs exit nil
+              Just !idxKeyVals -> do
+                result <- lookupBuIndex bui idxKeyVals
+                exitEdhSTM pgs exit result
+    _ -> throwEdh UsageError "Invalid args to buiLookupProc"
+
+  -- | host generator bui.range( min=None, max=None )
+  buiRangeProc :: EdhProcedure
+  buiRangeProc !apk !exit = do
+    pgs <- ask
+    let this = thisObject $ contextScope $ edh'context pgs
+        es   = entity'store $ objEntity this
+    case generatorCaller $ edh'context pgs of
+      Nothing -> throwEdh UsageError "Can only be called as generator"
+      Just (!pgs', !iter'cb) -> do
+        let
+          yieldResults :: [(IndexKey, EdhValue)] -> STM ()
+          yieldResults [] = exitEdhSTM pgs exit nil
+          yieldResults ((ik, v) : rest) =
+            runEdhProc pgs'
+              $ iter'cb
+                  (EdhArgsPack
+                    (ArgsPack [edhValueOfIndexKey ik, noneNil v] Map.empty)
+                  )
+              $ \_ -> yieldResults rest
+        case parseIdxRng apk of
+          Left argsErr -> throwEdh UsageError $ argsErr <> " for buiRangeProc"
+          Right (minKey, maxKey) -> contEdhSTM $ do
+            esd <- readTVar es
+            case fromDynamic esd of
+              Nothing ->
+                throwEdhSTM pgs UsageError
+                  $  "bug: this is not a bui : "
+                  <> T.pack (show esd)
+              Just (buiVar :: TMVar BuIndex) -> do
+                bui <- readTMVar buiVar
+                edhIdxKeyVals pgs minKey $ \minKeyVals ->
+                  edhIdxKeyVals pgs maxKey $ \maxKeyVals -> do
+                    result <- listBuIndexRange bui minKeyVals maxKeyVals
+                    yieldResults result
+
+
+type IdxRng = (EdhValue, EdhValue)
+parseIdxRng :: ArgsPack -> Either Text IdxRng
+parseIdxRng =
+  parseArgsPack (nil, nil)
+    $ ArgsPackParser
+        [ \v (_, argMax) -> Right (v, argMax)
+        , \v (argMin, _) -> Right (argMin, v)
+        ]
+    $ Map.fromList
+        [ ("min", \v (_, argMax) -> Right (v, argMax))
+        , ("max", \v (argMin, _) -> Right (argMin, v))
+        ]
 
 
 indexKeyRange

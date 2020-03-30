@@ -13,6 +13,7 @@ import qualified Data.Text                     as T
 import           Language.Edh.EHI
 
 import           DB.RT
+import           DB.Storage.InMem
 
 
 -- the Edh module name to be run as the console
@@ -29,49 +30,63 @@ edhProgLoop !console = do
   world <- createEdhWorld console
   installEdhBatteries world
 
-  -- install the host module
-  void $ installEdhModule world "db/ehi" $ \pgs modu -> do
+  -- install the host modules
+  void $ installEdhModule world "db/RT" $ \pgs modu -> do
 
     let ctx       = edh'context pgs
         moduScope = objectScope ctx modu
 
-    !dbArts <-
+    !moduArts <-
       sequence
-      $  [ (AttrByName nm, ) <$> mkHostProc moduScope mc nm hp args
-         | (mc, nm, hp, args) <-
-           [ (EdhMethod, "className", classNameProc, WildReceiver)
-           , ( EdhMethod
-             , "newBo"
-             , newBoProc
-             , PackReceiver
-               [ RecvArg "boClass" Nothing Nothing
-               , RecvArg "sbEnt"   Nothing Nothing
-               ]
-             )
-           , ( EdhMethod
-             , "streamToDisk"
-             , streamToDiskProc
-             , PackReceiver
-               [ RecvArg "persistOutlet"  Nothing Nothing
-               , RecvArg "dataFileFolder" Nothing Nothing
-               , RecvArg "sinkBaseDFD"    Nothing Nothing
-               ]
-             )
-           , ( EdhMethod
-             , "streamFromDisk"
-             , streamFromDiskProc
-             , PackReceiver
-               [ RecvArg "restoreOutlet" Nothing Nothing
-               , RecvArg "baseDFD"       Nothing Nothing
-               ]
-             )
-           ]
-         ]
-      ++ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
-         | (nm, hc) <- [("BoIndex", boiHostCtor), ("BoSet", bosHostCtor)]
-         ]
+        $ [ (AttrByName nm, ) <$> mkHostProc moduScope mc nm hp args
+          | (mc, nm, hp, args) <-
+            [ (EdhMethod, "className", classNameProc, WildReceiver)
+            , ( EdhMethod
+              , "newBo"
+              , newBoProc
+              , PackReceiver
+                [ RecvArg "boClass" Nothing Nothing
+                , RecvArg "sbEnt"   Nothing Nothing
+                ]
+              )
+            , ( EdhMethod
+              , "streamToDisk"
+              , streamToDiskProc
+              , PackReceiver
+                [ RecvArg "persistOutlet"  Nothing Nothing
+                , RecvArg "dataFileFolder" Nothing Nothing
+                , RecvArg "sinkBaseDFD"    Nothing Nothing
+                ]
+              )
+            , ( EdhMethod
+              , "streamFromDisk"
+              , streamFromDiskProc
+              , PackReceiver
+                [ RecvArg "restoreOutlet" Nothing Nothing
+                , RecvArg "baseDFD"       Nothing Nothing
+                ]
+              )
+            ]
+          ]
 
-    updateEntityAttrs pgs (objEntity modu) dbArts
+    updateEntityAttrs pgs (objEntity modu) moduArts
+
+  void $ installEdhModule world "db/Storage/InMem" $ \pgs modu -> do
+
+    let ctx       = edh'context pgs
+        moduScope = objectScope ctx modu
+
+    !moduArts <-
+      sequence
+        $ [ (AttrByName nm, ) <$> mkHostClass moduScope nm False hc
+          | (nm, hc) <-
+            [ ("BoSet"  , bosHostCtor)
+            , ("BoIndex", boiHostCtor)
+            , ("BuIndex", buiHostCtor)
+            ]
+          ]
+
+    updateEntityAttrs pgs (objEntity modu) moduArts
 
   -- here being the host interpreter, we loop infinite runs of the Edh
   -- console REPL program, unless cleanly shutdown, for resilience

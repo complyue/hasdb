@@ -1,0 +1,69 @@
+
+case{import(**_) 'db/Storage/InMem' }of{modu}->shellWith(modu)
+
+{
+  class BO {
+    method __init__ (
+      a as this.a, b as this.b, c as this.c,
+    ) pass
+    method __repr__() {
+      'BO{'++this.a++'/'++this.b++'/'++this.c++'}'
+    }
+  }
+
+  bo1 = BO(1,2,3)
+  bo2 = BO(3,2,1)
+  bo3 = BO(1,2,3)
+}
+
+
+bos = BoSet()
+
+bos.(<-)(bo1)
+bos.(<-)(bo2)
+bos.(<-)(bo3)
+
+bos.(^*)(bo2)
+
+for bo from bos.all() do console.print( 'got bo in set: ', bo=bo )
+
+
+{
+  # this form more concise to write by hand
+  bui = BuIndex(expr (
+    a, b:DESC, c:ASC,
+  ))
+}
+bui.spec
+bui.keys
+
+{
+  indexSpec = [ # this list to be generated from cfg etc.
+    'a', 'b':false, ('c', true),
+  ]
+  # this form more concise to write programmatically
+  boi = BoIndex(indexSpec)
+}
+boi.spec
+boi.keys
+
+
+bui.(<-)(bo1)
+bui.(<-)(bo2)
+# should fall as violating unique constraint
+bui.(<-)(bo3)
+
+bui[1,2,3]
+
+for (ik, bo) from bui.range() do console.info<| 'unique one: ' ++ ik ++ ' - ' ++ bo
+
+
+boi.(<-)(bo1)
+boi.(<-)(bo2)
+boi.(<-)(bo3)
+
+boi[1,2,3]
+
+
+for (ik, bos) from boi.groups() do console.info<| 'group ' ++ ik ++ ' - ' ++ bos
+
