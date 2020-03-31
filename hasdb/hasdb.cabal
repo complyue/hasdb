@@ -47,6 +47,7 @@ executable hasdb
         hashable -any,
         unordered-containers -any,
         containers -any,
+        massiv -any,
         repa -any,
         unix -any,
         time -any,
