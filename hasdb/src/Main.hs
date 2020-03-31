@@ -30,7 +30,7 @@ main = do
     atomically $ writeTQueue (consoleIO console) ConsoleShutdown
 
   atomically $ do
-    consoleOut ">> Haskell Data Back <<"
+    consoleOut ">> Haskell Data Back <<\n"
     consoleOut
       "* Blank Screen Syndrome ? Take the Tour as your companion, checkout:\n"
     consoleOut "  https://github.com/e-wrks/hasdb/tree/master/Tour\n"

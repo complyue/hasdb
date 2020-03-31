@@ -142,23 +142,27 @@
         WorkFor( p02, d01, 54321 )
       }
 
-      case db.personByName['Compl'] of { compl=>_ } -> {
-        console.print( "Compl's record is: " ++ compl )
-      }
-
-      console.print( 'got dev ' ++ d01 )
-      for (ixk, workRel) from d01.workers.range() do 
-        console.print( 'got workers ' ++ workRel.person ++
-          ' with sorting order ' ++ ixk)
-
-      shutdown := 'shtudown'  # define the shutdown command
-
+      shutdown := Command()  # define the shutdown command
+      console.print(
+        ' * You are in the DB app now, key in `shutdown` to commit all changes.',
+        ' * Note that quiting the process (by Ctrl^D) from within the app,',
+        '   without shutting down first, will leave your changes uncommitted.' )
       while true {
         case console.readCommand(ps1="(app)Đ: ", ps2="(app)Đ| ") of {
           shutdown -> { break }
-          { cmd } -> {
-            console.print( cmd )
-            cmd = nil  # clear it
+          debug.dir -> {  # custom response to the builtin `dir` command
+
+            case db.personByName['Compl'] of { compl=>_ } -> {
+              console.print( "Compl's record is: " ++ compl )
+            }
+            console.print( 'Dev Org is ' ++ d01 ++ ' with workers:')
+            for (ixk, workRel) from d01.workers.range() do 
+              console.print( '  ' ++ workRel.person ++ ' in order of ' ++ ixk )
+
+          }
+          { cmdVal } -> {
+            console.print( cmdVal )
+            cmdVal = nil  # clear it
           }
         }
       } $=> {  # catch exceptions
@@ -174,8 +178,8 @@
           # host interpreter, let it decide what to do.
         }
 
-        { exc } -> {
-          console.print( 'Recovered from error', exception=exc )
+        { cmdExc } -> {
+          console.print( 'Recovered from error', exception=cmdExc )
         }
 
       }
