@@ -153,7 +153,7 @@
       while true {
         case console.readCommand(ps1="(app)Đ: ", ps2="(app)Đ| ") of {
           shutdown -> { break }
-          debug.dir -> {  # custom response to the builtin `dir` command
+          batteries.dir -> {  # custom response to the builtin `dir` command
 
             case db.personByName['Compl'] of { compl=>_ } -> {
               console.print( "Compl's record is: " ++ compl )
