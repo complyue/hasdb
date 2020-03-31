@@ -3,9 +3,15 @@ import * 'demo/basics'
 
 runDbApp( 'data', DbApp() )
 
+dir
+
+jims
+
 compl.delete()
 
-d01.delete()
+dev.delete()
+
+jim.version += 1 $=> jim.version = 1
 
 shutdown
 

@@ -131,18 +131,21 @@
     method run() {
 
       case db.deptByName[ 'Dev' ] of {
-        { d01 } -> { pass }
+        { dev } -> { pass }
 
-        d01 = Depart('Dev')
+        dev = Depart('Dev')
 
-        p01 = Person( name = 'Compl', age = 41 )
-        p02 = Person( name = 'Jim', age = 11 )
+        compl = Person( name = 'Compl', age = 41 )
+        jim = Person( name = 'Jim', age = 11 )
 
-        WorkFor( p01, d01, 12345 )
-        WorkFor( p02, d01, 54321 )
+        WorkFor( compl, dev, 12345 )
+        WorkFor( jim, dev, 54321 )
       }
 
-      shutdown := Command()  # define the shutdown command
+      # define commands this app supports
+      shutdown := Command()
+      jims := Command()
+
       console.print(
         ' * You are in the DB app now, key in `shutdown` to commit all changes.',
         ' * Note that quiting the process (by Ctrl^D) from within the app,',
@@ -155,10 +158,18 @@
             case db.personByName['Compl'] of { compl=>_ } -> {
               console.print( "Compl's record is: " ++ compl )
             }
-            console.print( 'Dev Org is ' ++ d01 ++ ' with workers:')
-            for (ixk, workRel) from d01.workers.range() do 
+            case db.personByName['Jim'] of { jim=>_ } -> {
+              console.print( "Got a Jim ver# " ++ ( jim.version $=> 'legacy' ) )
+            }
+            console.print( 'Dev Org is ' ++ dev ++ ' with workers:')
+            for (ixk, workRel) from dev.workers.range() do 
               console.print( '  ' ++ workRel.person ++ ' in order of ' ++ ixk )
 
+          }
+          jims -> {
+            console.print( 'Got these versions of Jim:' )
+            for jim from db.personByName['Jim'] do console.print(
+              ' # ' ++ (jim.version $=> 'legacy') )
           }
           { cmdVal } -> {
             console.print( cmdVal )
