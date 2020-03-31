@@ -25,7 +25,8 @@ executable hasdb
     hs-source-dirs: src
     other-modules:
         Repl
-        DB.DataWorld
+        DB.Array
+        DB.Array.MMap
         DB.Comm.MicroProto
         DB.Storage.InMem
         DB.Storage.InMem.TreeIdx
@@ -39,21 +40,18 @@ executable hasdb
         base >=4.12,
         stm >=2.5,
         edh -any,
-        binary -any,
-        megaparsec >7.0,
         lossless-decimal -any,
-        scientific -any,
-        haskeline -any,
+        binary -any,
         filepath -any,
         directory -any,
         hashable -any,
         unordered-containers -any,
         containers -any,
+        repa -any,
         unix -any,
         time -any,
         clock -any,
         network -any,
-        websockets -any,
         snap-core -any,
         snap-server -any,
         text -any,
