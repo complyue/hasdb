@@ -8,10 +8,10 @@ author: Compl Yue
 stability: experimental
 homepage: https://github.com/e-wrks/hasdb
 bug-reports: https://github.com/e-wrks/hasdb/issues
-synopsis: Instant Messaging in Edh
+synopsis: Haskell Native Database
 description:
     Please see the README on Github at <https://github.com/e-wrks/hasdb>
-category: Concurrency,Web
+category: Concurrent,Database
 build-type: Simple
 extra-source-files:
     README.md
@@ -20,11 +20,47 @@ source-repository head
     type: git
     location: https://github.com/e-wrks/hasdb
 
+library
+    exposed-modules:
+        DB.Batteries
+    hs-source-dirs: pub
+    default-language: Haskell2010
+    default-extensions: NoImplicitPrelude OverloadedStrings LambdaCase
+                        BangPatterns TupleSections ScopedTypeVariables
+    ghc-options: -Wall -threaded
+    build-depends:
+        hasdb-internal -any,
+        base >=4.12,
+        stm >=2.5,
+        text -any,
+        bytestring -any,
+        mtl -any,
+        transformers -any,
+        edh -any
+
 executable hasdb
     main-is: Main.hs
-    hs-source-dirs: src
+    hs-source-dirs: repl
     other-modules:
         Repl
+    default-language: Haskell2010
+    default-extensions: NoImplicitPrelude OverloadedStrings LambdaCase
+                        BangPatterns TupleSections ScopedTypeVariables
+    ghc-options: -Wall -threaded
+    build-depends:
+        hasdb -any,
+        base >=4.12,
+        stm >=2.5,
+        text -any,
+        bytestring -any,
+        mtl -any,
+        transformers -any,
+        edh -any,
+        lossless-decimal -any
+
+library hasdb-internal
+    exposed-modules:
+        DB.RT
         DB.Vector
         DB.Array
         DB.Array.MMap
@@ -32,7 +68,7 @@ executable hasdb
         DB.Storage.InMem
         DB.Storage.InMem.TreeIdx
         DB.Storage.DataDir
-        DB.RT
+    hs-source-dirs: src
     default-language: Haskell2010
     default-extensions: NoImplicitPrelude OverloadedStrings LambdaCase
                         BangPatterns TupleSections ScopedTypeVariables
