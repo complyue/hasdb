@@ -130,7 +130,6 @@ vecHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
             (show esd)
         Just (vec :: EdhVector) -> go (V.toList vec) []
 
-  -- | host generator vec.all()
   vecAllProc :: EdhProcedure
   vecAllProc _ !exit = do
     pgs <- ask
