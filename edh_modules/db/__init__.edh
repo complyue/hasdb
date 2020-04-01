@@ -1,5 +1,7 @@
 
-# re-export submodules
+# re-export these host modules
+import * 'db/Vector'
 
+# re-export these submodules
 import * './options'
 import * './machinery'

@@ -13,6 +13,7 @@ import qualified Data.Text                     as T
 import           Language.Edh.EHI
 
 import           DB.RT
+import           DB.Vector
 import           DB.Storage.InMem
 
 
@@ -71,6 +72,19 @@ edhProgLoop !console = do
 
     updateEntityAttrs pgs (objEntity modu) moduArts
 
+  void $ installEdhModule world "db/Vector" $ \pgs modu -> do
+
+    let ctx       = edh'context pgs
+        moduScope = objectScope ctx modu
+
+    !moduArts <-
+      sequence
+        $ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
+          | (nm, hc) <- [("Vector", vecHostCtor)]
+          ]
+
+    updateEntityAttrs pgs (objEntity modu) moduArts
+
   void $ installEdhModule world "db/Storage/InMem" $ \pgs modu -> do
 
     let ctx       = edh'context pgs
@@ -78,7 +92,7 @@ edhProgLoop !console = do
 
     !moduArts <-
       sequence
-        $ [ (AttrByName nm, ) <$> mkHostClass moduScope nm False hc
+        $ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
           | (nm, hc) <-
             [ ("BoSet"  , bosHostCtor)
             , ("BoIndex", boiHostCtor)

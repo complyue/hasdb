@@ -11,7 +11,7 @@ import           Control.Concurrent.STM
 import qualified Data.HashMap.Strict           as Map
 import qualified Data.Text                     as T
 
-import           Data.Lossless.Decimal          ( castDecimalToInteger )
+import qualified Data.Lossless.Decimal         as D
 import           Language.Edh.EHI
 
 import           DB.Storage.DataDir
@@ -101,7 +101,7 @@ streamFromDiskProc (ArgsPack !args !kwargs) !exit = do
       edhWaitIO exit $ do
         streamEdhReprFromDisk (edh'context pgs) restoreOutlet
           $ fromIntegral
-          $ castDecimalToInteger baseDFD
+          $ D.castDecimalToInteger baseDFD
         return nil
     _ -> throwEdh EvalError "Invalid arg to `streamFromDisk`"
 

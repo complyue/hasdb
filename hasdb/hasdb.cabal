@@ -25,6 +25,7 @@ executable hasdb
     hs-source-dirs: src
     other-modules:
         Repl
+        DB.Vector
         DB.Array
         DB.Array.MMap
         DB.Comm.MicroProto
@@ -47,14 +48,12 @@ executable hasdb
         hashable -any,
         unordered-containers -any,
         containers -any,
-        massiv -any,
-        repa -any,
+        vector -any,
+        mmap -any,
         unix -any,
         time -any,
         clock -any,
         network -any,
-        snap-core -any,
-        snap-server -any,
         text -any,
         bytestring -any,
         mtl -any,
