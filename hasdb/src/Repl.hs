@@ -32,59 +32,8 @@ edhProgLoop !console = do
   installEdhBatteries world
 
   -- install the host modules
-  void $ installEdhModule world "db/RT" $ \pgs modu -> do
 
-    let ctx       = edh'context pgs
-        moduScope = objectScope ctx modu
-
-    !moduArts <-
-      sequence
-        $ [ (AttrByName nm, ) <$> mkHostProc moduScope mc nm hp args
-          | (mc, nm, hp, args) <-
-            [ (EdhMethod, "className", classNameProc, WildReceiver)
-            , ( EdhMethod
-              , "newBo"
-              , newBoProc
-              , PackReceiver
-                [ RecvArg "boClass" Nothing Nothing
-                , RecvArg "sbEnt"   Nothing Nothing
-                ]
-              )
-            , ( EdhMethod
-              , "streamToDisk"
-              , streamToDiskProc
-              , PackReceiver
-                [ RecvArg "persistOutlet"  Nothing Nothing
-                , RecvArg "dataFileFolder" Nothing Nothing
-                , RecvArg "sinkBaseDFD"    Nothing Nothing
-                ]
-              )
-            , ( EdhMethod
-              , "streamFromDisk"
-              , streamFromDiskProc
-              , PackReceiver
-                [ RecvArg "restoreOutlet" Nothing Nothing
-                , RecvArg "baseDFD"       Nothing Nothing
-                ]
-              )
-            ]
-          ]
-
-    updateEntityAttrs pgs (objEntity modu) moduArts
-
-  void $ installEdhModule world "db/Vector" $ \pgs modu -> do
-
-    let ctx       = edh'context pgs
-        moduScope = objectScope ctx modu
-
-    !moduArts <-
-      sequence
-        $ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
-          | (nm, hc) <- [("Vector", vecHostCtor)]
-          ]
-
-    updateEntityAttrs pgs (objEntity modu) moduArts
-
+  -- this host module only used by 'db/machinery'
   void $ installEdhModule world "db/Storage/InMem" $ \pgs modu -> do
 
     let ctx       = edh'context pgs
@@ -99,6 +48,52 @@ edhProgLoop !console = do
             , ("BuIndex", buiHostCtor)
             ]
           ]
+
+    updateEntityAttrs pgs (objEntity modu) moduArts
+
+  -- this host module contains procedures to do persisting to and
+  -- restoring from disk, the supporting classes / procedures for
+  -- restoration must all be available from this module
+  void $ installEdhModule world "db/RT" $ \pgs modu -> do
+
+    let ctx       = edh'context pgs
+        moduScope = objectScope ctx modu
+
+    !moduArts <-
+      sequence
+      $  [ (AttrByName nm, ) <$> mkHostProc moduScope mc nm hp args
+         | (mc, nm, hp, args) <-
+           [ (EdhMethod, "className", classNameProc, WildReceiver)
+           , ( EdhMethod
+             , "newBo"
+             , newBoProc
+             , PackReceiver
+               [ RecvArg "boClass" Nothing Nothing
+               , RecvArg "sbEnt"   Nothing Nothing
+               ]
+             )
+           , ( EdhMethod
+             , "streamToDisk"
+             , streamToDiskProc
+             , PackReceiver
+               [ RecvArg "persistOutlet"  Nothing Nothing
+               , RecvArg "dataFileFolder" Nothing Nothing
+               , RecvArg "sinkBaseDFD"    Nothing Nothing
+               ]
+             )
+           , ( EdhMethod
+             , "streamFromDisk"
+             , streamFromDiskProc
+             , PackReceiver
+               [ RecvArg "restoreOutlet" Nothing Nothing
+               , RecvArg "baseDFD"       Nothing Nothing
+               ]
+             )
+           ]
+         ]
+      ++ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
+         | (nm, hc) <- [("Vector", vecHostCtor)]
+         ]
 
     updateEntityAttrs pgs (objEntity modu) moduArts
 

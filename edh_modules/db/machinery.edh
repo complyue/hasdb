@@ -6,6 +6,7 @@
 import (
 
   # re-export these
+  Vector, 
   className, 
 
   # don't re-export these
@@ -94,15 +95,17 @@ class BuIndex {
 }
 
 # this tells persistent attributes from transient ones
-method hasReConRepr( attrVal ) {
- return type( attrVal ) ?<= [
+method hasReConRepr( attrVal ) case attrVal of {
+  ;| type( attrVal ) ?<= [
     # types reconstructable from its textual representation
     nil,  # absent attribute
     BoolType, DecimalType, StringType,  # literal values
     # TODO validate deep content in a container are reconstructable from repr
     PairType, TupleType, ListType, DictType,  # containers
     ArgsPackType,  # complexer container
-  ]
+  ] -> true
+  {{ Vector: _ }} -> true;
+  false
 }
 
 method runDbApp(dataFileFolder, dbApp) {

@@ -1,4 +1,6 @@
 
+import * 'db'
+
 {
 
   # an object in Edh can serve as a parameteric *module*, with nested classes,
@@ -132,6 +134,8 @@
 
       case db.deptByName[ 'Dev' ] of {
         { dev } -> { pass }
+
+        console.print( 'Populating DB contents.' )
 
         dev = Depart('Dev')
 
