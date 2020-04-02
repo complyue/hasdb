@@ -144,8 +144,8 @@ method runDbApp(dataDir, dbApp) {
 
 class DataBackLifecycle {
 
-  # make these host methods available from db's super, and called from db,
-  # so they can obtain the db instance as `that` reference
+  # make these host methods available from db's super, and called against the db
+  # instance, so the host procs can obtain the db instance via `that` reference
   _streamToDisk = _streamToDisk
   _streamFromDisk = _streamFromDisk
 

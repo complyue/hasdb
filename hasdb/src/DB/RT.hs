@@ -8,6 +8,8 @@ import           Control.Monad.Reader
 -- import           Control.Concurrent
 import           Control.Concurrent.STM
 
+import           Data.List.NonEmpty             ( NonEmpty(..) )
+import qualified Data.List.NonEmpty            as NE
 import qualified Data.HashMap.Strict           as Map
 import qualified Data.Text                     as T
 
@@ -82,7 +84,7 @@ streamToDiskProc (ArgsPack !args !kwargs) !exit = do
     [EdhSink !persistOutlet, EdhString !dataFileFolder, EdhSink !sinkBaseDFD]
       | Map.null kwargs -> edhWaitIO exit $ do
         -- not to use `unsafeIOToSTM` here, despite it being retry prone,
-        -- nested `atomically` is prohibited as well.
+        -- nested `atomically` is particularly prohibited.
         streamEdhReprToDisk (edh'context pgs)
                             persistOutlet
                             (T.unpack dataFileFolder)
@@ -90,18 +92,36 @@ streamToDiskProc (ArgsPack !args !kwargs) !exit = do
         return nil
     _ -> throwEdh EvalError "Invalid arg to `streamToDisk`"
 
+
 -- | utility streamFromDisk(restoreOutlet, baseDFD)
 streamFromDiskProc :: EdhProcedure
 streamFromDiskProc (ArgsPack !args !kwargs) !exit = do
   pgs <- ask
-  case args of
-    [EdhSink !restoreOutlet, EdhDecimal baseDFD] | Map.null kwargs ->
-      -- not to use `unsafeIOToSTM` here, despite it being retry prone,
-      -- nested `atomically` is prohibited as well.
-      edhWaitIO exit $ do
-        streamEdhReprFromDisk (edh'context pgs) restoreOutlet
-          $ fromIntegral
-          $ D.castDecimalToInteger baseDFD
-        return nil
-    _ -> throwEdh EvalError "Invalid arg to `streamFromDisk`"
+  contEdhSTM $ do
+    let procCtx   = edh'context pgs
+        procScope = contextScope procCtx
+        db        = thatObject procScope
+    -- `that` object is the db instance, replace this host proc's top frame
+    -- with a scope having the db instace available from attr `db`, at the
+    -- same time lexcically nested within the host proc's original scope, so
+    -- can read all attrs there.
+    entWithDb <- createHashEntity
+      $ Map.fromList [(AttrByName "db", EdhObject db)]
+    let scopeWithDb = procScope
+          { scopeEntity = entWithDb
+          , scopeProc = (scopeProc procScope) { procedure'lexi = Just procScope
+                                              }
+          }
+        !ctxWithDb =
+          procCtx { callStack = scopeWithDb :| NE.tail (callStack procCtx) }
+    case args of
+      [EdhSink !restoreOutlet, EdhDecimal baseDFD] | Map.null kwargs ->
+        -- not to use `unsafeIOToSTM` here, despite it being retry prone,
+        -- nested `atomically` is particularly prohibited.
+        edhWaitIOSTM pgs exit $ do
+          streamEdhReprFromDisk ctxWithDb restoreOutlet
+            $ fromIntegral
+            $ D.castDecimalToInteger baseDFD
+          return nil
+      _ -> throwEdhSTM pgs EvalError "Invalid arg to `streamFromDisk`"
 

@@ -12,6 +12,7 @@ import           Control.Monad.Reader
 
 import           DB.RT
 import           DB.Vector
+import           DB.Array
 import           DB.Storage.InMem
 
 import           Language.Edh.EHI
@@ -79,7 +80,7 @@ installDbBatteries !world = do
            ]
          ]
       ++ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
-         | (nm, hc) <- [("Vector", vecHostCtor)]
+         | (nm, hc) <- [("Vector", vecHostCtor), ("Array", aryHostCtor)]
          ]
 
     updateEntityAttrs pgs (objEntity modu) moduArts
