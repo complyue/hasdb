@@ -28,16 +28,15 @@ vecHostCtor
   :: EdhProgState
   -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
   -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
+  -> (Dynamic -> STM ())  -- in-band data to be written to entity store
   -> STM ()
-vecHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
+vecHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
   let !scope = contextScope $ edh'context pgsCtor
-      !this  = thisObject scope
-  let doIt :: Int -> [EdhValue] -> STM ()
+      doIt :: Int -> [EdhValue] -> STM ()
       doIt !len !vs = do
         let vec = case len of
               _ | len < 0 -> V.fromList vs
               _           -> V.fromListN len vs
-        writeTVar (entity'store $ objEntity this) $ toDyn vec
         methods <- sequence
           [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
           | (nm, vc, hp, mthArgs) <-
@@ -57,6 +56,7 @@ vecHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
           ++ [ (AttrByName "__null__", EdhBool $ V.length vec <= 0)
              , (AttrByName "length"  , EdhDecimal $ fromIntegral $ V.length vec)
              ]
+        ctorExit $ toDyn vec
   case Map.lookup "length" ctorKwargs of
     Nothing              -> doIt (-1) ctorArgs
     Just (EdhDecimal !d) -> case D.decimalToInteger d of
@@ -84,7 +84,10 @@ vecHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
         Just (vec :: EdhVector) -> case args of
           [EdhDecimal !idx] -> case fromInteger <$> D.decimalToInteger idx of
             Just n ->
-              let i = if n >= 0 then n else V.length vec + n
+              let i = if n < 0
+                    then -- python style negative indexing
+                         V.length vec + n
+                    else n
               in  if i < 0 || i >= V.length vec
                     then
                       throwEdhSTM pgs EvalError

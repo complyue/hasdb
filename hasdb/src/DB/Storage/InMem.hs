@@ -28,13 +28,12 @@ type BoSet = Set.HashSet Object
 bosHostCtor
   :: EdhProgState
   -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
-  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
+  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store
+  -> (Dynamic -> STM ())  -- in-band data to be written to entity store
   -> STM ()
-bosHostCtor !pgsCtor _ !obs = do
+bosHostCtor !pgsCtor _ !obs !ctorExit = do
   let !scope = contextScope $ edh'context pgsCtor
-      !this  = thisObject scope
   bosVar <- newTMVar (Set.empty :: BoSet)
-  writeTVar (entity'store $ objEntity this) $ toDyn bosVar
   modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
     [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp args
     | (nm, vc, hp, args) <-
@@ -51,6 +50,7 @@ bosHostCtor !pgsCtor _ !obs = do
       , ("all", EdhGnrtor, bosAllProc, PackReceiver [])
       ]
     ]
+  ctorExit $ toDyn bosVar
 
  where
 
@@ -347,11 +347,11 @@ listIdxGroups (BoIndex !spec !tree _) !minKeyVals !maxKeyVals =
 boiHostCtor
   :: EdhProgState
   -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
-  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
+  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store
+  -> (Dynamic -> STM ())  -- in-band data to be written to entity store
   -> STM ()
-boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
+boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
   let !scope = contextScope $ edh'context pgsCtor
-      !this  = thisObject scope
   parseIndexSpec pgsCtor ctorArgs $ \spec@(IndexSpec spec') -> do
     let specStr = T.pack $ show spec
         idxName = case Map.lookup "name" ctorKwargs of
@@ -368,7 +368,7 @@ boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
       ]
     let boi = BoIndex spec TreeMap.empty Map.empty
     boiVar <- newTMVar boi
-    writeTVar (entity'store $ objEntity this) $ toDyn boiVar
+    ctorExit $ toDyn boiVar
   modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
     [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
     | (nm, vc, hp, mthArgs) <-
@@ -560,11 +560,11 @@ listBuIndexRange (BuIndex !spec !tree _) !minKeyVals !maxKeyVals =
 buiHostCtor
   :: EdhProgState
   -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
-  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
+  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store
+  -> (Dynamic -> STM ())  -- in-band data to be written to entity store
   -> STM ()
-buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
+buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
   let !scope = contextScope $ edh'context pgsCtor
-      !this  = thisObject scope
   parseIndexSpec pgsCtor ctorArgs $ \spec@(IndexSpec spec') -> do
     let specStr = T.pack $ show spec
         idxName = case Map.lookup "name" ctorKwargs of
@@ -581,7 +581,7 @@ buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
       ]
     let bui = BuIndex spec TreeMap.empty Map.empty
     buiVar <- newTMVar bui
-    writeTVar (entity'store $ objEntity this) $ toDyn buiVar
+    ctorExit $ toDyn buiVar
   modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
     [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
     | (nm, vc, hp, mthArgs) <-

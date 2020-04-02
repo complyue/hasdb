@@ -151,9 +151,10 @@ type DbF4Array = DbArray Float
 aryHostCtor
   :: EdhProgState
   -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
-  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store 
+  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store
+  -> (Dynamic -> STM ())  -- in-band data to be written to entity store
   -> STM ()
-aryHostCtor !pgsCtor !apk !obs =
+aryHostCtor !pgsCtor !apk !obs !ctorExit =
   case parseArgsPack ("", "", nil, "f8", 0 :: Int) ctorArgsParser apk of
     Left err -> throwEdhSTM pgsCtor UsageError err
     Right (dataDir, dataPath, shapeVal, dtype, len1d) ->
@@ -162,9 +163,7 @@ aryHostCtor !pgsCtor !apk !obs =
         else parseArrayShape pgsCtor shapeVal $ \shape -> do
           let
             !scope = contextScope $ edh'context pgsCtor
-            !this  = thisObject scope
             doIt !dary = do
-              writeTVar (entity'store $ objEntity this) dary
               methods <- sequence
                 [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
                 | (nm, vc, hp, mthArgs) <-
@@ -189,6 +188,7 @@ aryHostCtor !pgsCtor !apk !obs =
                      , EdhDecimal $ fromIntegral $ dbArraySize shape
                      )
                    ]
+              ctorExit dary
           case dtype of
             "f8" -> do
               ary :: DbF8Array <- unsafeIOToSTM $ mmapArray dataDir $ ArrayMeta
