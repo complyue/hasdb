@@ -135,11 +135,11 @@ arrayFlatMVector (DbArray (ArrayMeta _ !shape _) !fptr) =
 mmapArray
   :: forall e . (Storable e, Num e) => Text -> ArrayMeta -> IO (DbArray e)
 mmapArray !dataDir meta@(ArrayMeta dataPath shape _) = do
-  let !dataFilePath = (T.unpack dataDir) </> (T.unpack dataPath)
+  let !dataFilePath = T.unpack dataDir </> T.unpack (dataPath <> ".edf")
       !dataFileDir  = takeDirectory dataFilePath
   createDirectoryIfMissing True dataFileDir
   (fptr, _, _) <- mmapFileForeignPtr dataFilePath ReadWriteEx
-    $ Just (0, (dbArraySize shape) * sizeOf (undefined :: e))
+    $ Just (0, dbArraySize shape * sizeOf (undefined :: e))
   return $ DbArray meta fptr
 
 
@@ -236,7 +236,7 @@ aryHostCtor !pgsCtor !apk !obs =
           ]
 
   aryIdxReadProc :: EdhProcedure
-  aryIdxReadProc (ArgsPack !args !_kwargs) !exit = do
+  aryIdxReadProc (ArgsPack !args _) !exit = do
     pgs <- ask
     let this = thisObject $ contextScope $ edh'context pgs
         es   = entity'store $ objEntity this
@@ -249,14 +249,23 @@ aryHostCtor !pgsCtor !apk !obs =
               (show esd)
           Just (_ary :: DbF4Array) ->
             throwEdhSTM pgs UsageError "dtype=f4 not impl. yet"
-        Just (ary :: DbF8Array) ->
+        Just (ary :: DbF8Array) -> case args of
           -- TODO support slicing, of coz need to tell a slicing index from
           --      an element index first
-          flatIndexInShape pgs args (dbArrayShape $ arrayMeta ary)
-            $ \flatIdx -> do
-                let flatVec = arrayFlatVector ary
-                    ev      = I.unsafeIndex flatVec flatIdx
-                exitEdhSTM pgs exit $ EdhDecimal $ fromRational $ realToFrac ev
+          [EdhTuple !vs] ->
+            flatIndexInShape pgs vs (dbArrayShape $ arrayMeta ary)
+              $ \flatIdx -> do
+                  let flatVec = arrayFlatVector ary
+                      ev      = I.unsafeIndex flatVec flatIdx
+                  exitEdhSTM pgs exit $ EdhDecimal $ fromRational $ realToFrac
+                    ev
+          idx ->
+            flatIndexInShape pgs idx (dbArrayShape $ arrayMeta ary)
+              $ \flatIdx -> do
+                  let flatVec = arrayFlatVector ary
+                      ev      = I.unsafeIndex flatVec flatIdx
+                  exitEdhSTM pgs exit $ EdhDecimal $ fromRational $ realToFrac
+                    ev
 
   aryReprProc :: EdhProcedure
   aryReprProc _ !exit = do
@@ -275,6 +284,7 @@ aryHostCtor !pgsCtor !apk !obs =
               $  EdhString
               $  "db.Array("
               <> T.pack (show path)
+              <> ", "
               <> T.pack (show shape)
               <> ", dtype='f4', len1d="
               <> T.pack (show len1d)
@@ -284,6 +294,7 @@ aryHostCtor !pgsCtor !apk !obs =
             $  EdhString
             $  "db.Array("
             <> T.pack (show path)
+            <> ", "
             <> T.pack (show shape)
             <> ", dtype='f8', len1d="
             <> T.pack (show len1d)

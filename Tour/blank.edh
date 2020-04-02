@@ -1,0 +1,9 @@
+
+import * 'demo/blank'
+
+runDbApp( 'blank', DbApp() )
+
+a = db.Array('bb',(width:=3,height:=7))
+
+a[1,2]
+
