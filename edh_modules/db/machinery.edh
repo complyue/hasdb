@@ -10,6 +10,7 @@ import (
   className, 
 
   # don't re-export these
+  Array as _Array
   newBo as _newBo, 
   streamToDisk as _streamToDisk, 
   streamFromDisk as _streamFromDisk, 
@@ -108,7 +109,7 @@ method hasReConRepr( attrVal ) case attrVal of {
   false
 }
 
-method runDbApp(dataFileFolder, dbApp) {
+method runDbApp(dataDir, dbApp) {
 
   # the persister will post the fd it opened as the latest data file
   # to this sink, it'll hold this fd open until it finalized a new data
@@ -117,9 +118,10 @@ method runDbApp(dataFileFolder, dbApp) {
   # the db app is run.
   sinkBaseDFD = sink
 
+  db = DataBack( dataDir, dbApp )
+
   # the producer procedure to be launched for db app
   producer launchApp( outlet ) {
-    db = DataBack( outlet, dbApp )
 
     debug&>{go{
       perceive outlet {  # dump persistence payload
@@ -131,19 +133,27 @@ method runDbApp(dataFileFolder, dbApp) {
     # read the most recent event from the sink, it must have been there already,
     # as `_streamToDisk()` won't subscribe to the persist outlet (only after 
     # which this producer proc will run) until it resolved the latest data file.
-    db.init( mre( sinkBaseDFD ) )
+    db.init( outlet, mre( sinkBaseDFD ) )
+
   }
 
   # serialize the stream of sunk Edh values to the specified data folder
-  _streamToDisk ( launchApp(), dataFileFolder, sinkBaseDFD )
+  db._streamToDisk ( launchApp(), dataDir, sinkBaseDFD )
 
 }
 
 class DataBackLifecycle {
 
+  # make these host methods available from db's super, and called from db,
+  # so they can obtain the db instance as `that` reference
+  _streamToDisk = _streamToDisk
+  _streamFromDisk = _streamFromDisk
+
   # this is the entry point of a db app, the concrete app can selectively
   # override some of the methods invoked here.
-  method init( baseDFD ) {
+  method init( 
+    persistOutlet as that.persistOutlet,  # put it to db instance
+    baseDFD ) {
     # note `that` reference won't invoke magics, just does vanilla
     # attribute resolution and do the call against the result.
 
@@ -151,7 +161,7 @@ class DataBackLifecycle {
     that.bootstrap()
 
     producer restoreData( outlet ) {
-      _streamFromDisk( outlet, baseDFD )
+      that._streamFromDisk( outlet, baseDFD )
     }
     that._replayHistory( restoreData() )
 
@@ -182,12 +192,16 @@ class DataBack {
   extends( DataBackLifecycle() )
 
   method __init__ (
-    persistOutlet as this.persistOutlet, 
+    dataDir as this.dataDir,
     dbApp,
   ) {
     # have the app as 1st super, so it can override DataBackLifecycle methods
     # invoked from this db instance
     extends( dbApp )
+  }
+
+  method Array (***apk) {
+    _Array( this.dataDir, ***apk )
   }
 
   # all global indices created. a hierarchy of dicts by class then by key attr,

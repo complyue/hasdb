@@ -23,7 +23,7 @@ import           Language.Edh.EHI
 -- Boxed Vector for Edh values
 type EdhVector = Vector EdhValue
 
--- | host constructor EdhVector()
+-- | host constructor Vector(*elements,length=None)
 vecHostCtor
   :: EdhProgState
   -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
@@ -46,13 +46,8 @@ vecHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs = do
               , vecIdxReadProc
               , PackReceiver [RecvArg "idx" Nothing Nothing]
               )
-            , ( "__repr__"
-              , EdhMethod
-              , vecReprProc
-              , PackReceiver
-                [RecvArg "idx" Nothing Nothing, RecvArg "val" Nothing Nothing]
-              )
-            , ("all", EdhMethod, vecAllProc, PackReceiver [])
+            , ("__repr__", EdhMethod, vecReprProc, PackReceiver [])
+            , ("all"     , EdhMethod, vecAllProc , PackReceiver [])
             ]
           ]
         modifyTVar' obs
