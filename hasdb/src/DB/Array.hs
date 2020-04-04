@@ -17,7 +17,6 @@ import           Control.Monad.Primitive
 import           Control.Monad.Reader
 import           Control.Concurrent.STM
 
-import           Data.List
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Data.List.NonEmpty            as NE
 
@@ -41,15 +40,14 @@ import           Language.Edh.EHI
 newtype ArrayShape = ArrayShape (NonEmpty (DimName, DimSize)) deriving (Eq, Typeable)
 instance Show ArrayShape where
   show (ArrayShape shape) =
-    "("
-      <> intercalate
-           ", "
-           (   (\(n, s) ->
-                 if n == "" then show s else T.unpack n <> " := " <> show s
-               )
-           <$> NE.toList shape
-           )
-      <> ")"
+    concat
+      $  ["("]
+      ++ (   (\(n, s) ->
+               (if n == "" then show s else T.unpack n <> " := " <> show s) <> ", "
+             )
+         <$> NE.toList shape
+         )
+      ++ [")"]
 type DimName = Text
 type DimSize = Int
 parseArrayShape :: EdhProgState -> EdhValue -> (ArrayShape -> STM ()) -> STM ()
