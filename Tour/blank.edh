@@ -3,7 +3,15 @@ import * 'demo/blank'
 
 runDbApp( 'blank', DbApp() )
 
-a = db.Array('bb',(width:=3,height:=7))
+a = db.Array('a/b/c/d',(3,7))
 
-a[1,2]
 
+a[1,2] = 1.23
+
+a[2,1] = 2/5
+
+
+(a[1,2], a[2,1])
+
+
+for (i, n) from a.all() do console.print((i, n))

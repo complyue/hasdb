@@ -29,6 +29,8 @@ import           Data.Dynamic
 import qualified Data.Vector.Storable          as I
 import qualified Data.Vector.Storable.Mutable  as M
 
+import           Data.Scientific
+
 import qualified Data.Lossless.Decimal         as D
 import           Language.Edh.EHI
 
@@ -172,6 +174,14 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
                     , aryIdxReadProc
                     , PackReceiver [RecvArg "idx" Nothing Nothing]
                     )
+                  , ( "[=]"
+                    , EdhMethod
+                    , aryIdxWriteProc
+                    , PackReceiver
+                      [ RecvArg "idx" Nothing Nothing
+                      , RecvArg "val" Nothing Nothing
+                      ]
+                    )
                   , ("__repr__", EdhMethod, aryReprProc, PackReceiver [])
                   , ("all"     , EdhGnrtor, aryAllProc , PackReceiver [])
                   ]
@@ -267,6 +277,46 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
                   exitEdhSTM pgs exit $ EdhDecimal $ fromRational $ realToFrac
                     ev
 
+  aryIdxWriteProc :: EdhProcedure
+  aryIdxWriteProc (ArgsPack !args _) !exit = do
+    pgs <- ask
+    let this = thisObject $ contextScope $ edh'context pgs
+        es   = entity'store $ objEntity this
+    contEdhSTM $ do
+      esd <- readTVar es
+      case fromDynamic esd of
+        Nothing -> case fromDynamic esd of
+          Nothing ->
+            throwEdhSTM pgs UsageError $ "bug: this is not an ary : " <> T.pack
+              (show esd)
+          Just (_ary :: DbF4Array) ->
+            throwEdhSTM pgs UsageError "dtype=f4 not impl. yet"
+        Just (ary :: DbF8Array) -> case args of
+          -- TODO support slicing assign, of coz need to tell a slicing index
+          --      from an element index first
+          [EdhTuple !idxs, EdhDecimal !dv] ->
+            flatIndexInShape pgs idxs (dbArrayShape $ arrayMeta ary)
+              $ \flatIdx -> do
+                  let flatVec = arrayFlatMVector ary
+                      ev :: Double
+                      ev = fromRational $ toRational dv
+                      rv :: Decimal
+                      rv = D.decimalFromScientific $ fromFloatDigits ev
+                  unsafeIOToSTM $ M.unsafeWrite flatVec flatIdx ev
+                  exitEdhSTM pgs exit $ EdhDecimal rv
+          [idx, EdhDecimal !d] ->
+            flatIndexInShape pgs [idx] (dbArrayShape $ arrayMeta ary)
+              $ \flatIdx -> do
+                  let flatVec = arrayFlatMVector ary
+                      ev :: Double
+                      ev = fromRational $ toRational d
+                      rv :: Decimal
+                      rv = D.decimalFromScientific $ fromFloatDigits ev
+                  unsafeIOToSTM $ M.unsafeWrite flatVec flatIdx ev
+                  exitEdhSTM pgs exit $ EdhDecimal rv
+          -- TODO more friendly error msg
+          _ -> throwEdhSTM pgs UsageError "Invalid index assign args"
+
   aryReprProc :: EdhProcedure
   aryReprProc _ !exit = do
     pgs <- ask
@@ -331,7 +381,7 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
                             (EdhArgsPack
                               (ArgsPack
                                 [ EdhDecimal $ fromIntegral i
-                                , EdhDecimal $ fromRational $ realToFrac ev
+                                , EdhDecimal $ D.decimalFromScientific $ fromFloatDigits ev
                                 ]
                                 mempty
                               )

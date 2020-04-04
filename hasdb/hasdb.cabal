@@ -78,6 +78,7 @@ library hasdb-internal
         stm >=2.5,
         edh -any,
         lossless-decimal -any,
+        scientific -any,
         binary -any,
         filepath -any,
         directory -any,
