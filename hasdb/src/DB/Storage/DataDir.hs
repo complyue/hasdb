@@ -11,9 +11,11 @@ import           System.Directory
 import           System.Posix
 import qualified System.Posix.Files.ByteString as PB
 
+import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Exception
+import           Control.Concurrent
 import           Control.Concurrent.STM
 
 import qualified Data.Text                     as T
@@ -47,21 +49,52 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
   else restoreLatest
  where
   restoreLatest = bracket (fdToHandle dfd) handleToFd $ \fileHndl -> do
+    thRestore <- myThreadId
     -- seems that closing an Fd will fail hard after `fdToHandle` but before
     -- `handleToFd`. may be an undocumented side-effect ?
     hSetBinaryMode fileHndl True
-    parsePackets fileHndl $ \dir payload -> case dir of
-      "" -> do
-        let !evs = decodeUtf8 payload
-        -- parse & eval evs to Edh value, then post to restoreOutlet 
-        void
-          $ runEdhProgram' ctx
-          $ evalEdh "<edf>" evs
-          $ \(OriginalValue evd _ _) ->
-              contEdhSTM $ publishEvent restoreOutlet evd
-        return False
-      _ -> throwIO $ userError $ "invalid packet directive: " <> T.unpack dir
-    atomically $ publishEvent restoreOutlet nil -- signal end of stream
+    (pktSink, stopSignal) <- atomically $ liftA2 (,) newEmptyTMVar newEmptyTMVar
+    let
+      restorePump :: EdhProgState -> STM ()
+      restorePump !pgs =
+        edhWaitIOSTM
+            pgs
+            (        atomically
+            $        (   Right
+                     <$> (takeTMVar pktSink >>= \(dir, payload) ->
+                           return (dir, decodeUtf8 payload)
+                         )
+                     )
+            `orElse` (Left <$> readTMVar stopSignal)
+            )
+          $ \case
+          -- stopped, signal end of stream and done
+              Left  _          -> publishEvent restoreOutlet nil
+              Right (dir, evs) -> case dir of
+                "" ->
+          -- parse & eval evs to Edh value, then post to restoreOutlet 
+                  runEdhProc pgs
+                    $ evalEdh "<edf>" evs
+                    $ \(OriginalValue evd _ _) -> contEdhSTM $ do
+                        publishEvent restoreOutlet evd
+                        restorePump pgs -- CPS recursion
+                _ ->
+                  throwEdhSTM pgs UsageError
+                    $  "invalid packet directive: "
+                    <> dir
+    void
+      -- parse & eval disk file content by another Edh program
+      $ forkFinally
+          (runEdhProgram' ctx (ask >>= \pgs -> contEdhSTM $ restorePump pgs))
+      $ \result -> do
+          case result of
+            -- to cancel file reading as well as propagate
+            Left  e -> throwTo thRestore e
+            Right _ -> pure ()
+          -- mark end of stream anyway
+          atomically $ publishEvent restoreOutlet nil
+    -- pump out file contents
+    parsePackets fileHndl pktSink stopSignal
 
 
 streamEdhReprToDisk :: Context -> EventSink -> FilePath -> EventSink -> IO ()

@@ -118,10 +118,12 @@ streamFromDiskProc (ArgsPack !args !kwargs) !exit = do
       [EdhSink !restoreOutlet, EdhDecimal baseDFD] | Map.null kwargs ->
         -- not to use `unsafeIOToSTM` here, despite it being retry prone,
         -- nested `atomically` is particularly prohibited.
-        edhWaitIOSTM pgs exit $ do
-          streamEdhReprFromDisk ctxWithDb restoreOutlet
+        edhWaitIOSTM
+            pgs
+            ( streamEdhReprFromDisk ctxWithDb restoreOutlet
             $ fromIntegral
             $ D.castDecimalToInteger baseDFD
-          return nil
+            )
+          $ \_ -> exitEdhSTM pgs exit nil
       _ -> throwEdhSTM pgs EvalError "Invalid arg to `streamFromDisk`"
 
