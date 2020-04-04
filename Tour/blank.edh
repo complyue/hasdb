@@ -10,8 +10,10 @@ a[1,2] = 1.23
 
 a[2,1] = 2/5
 
+a[0,5] = 7/11
 
-(a[1,2], a[2,1])
+
+(a[1,2], a[2,1], a[0,5])
 
 
-for (i, n) from a.all() do console.print((i, n))
+for (i, n) from a.all() do console.print(i: n)
