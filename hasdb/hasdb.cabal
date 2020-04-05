@@ -64,6 +64,7 @@ library hasdb-internal
         DB.Vector
         DB.Array
         DB.Array.MMap
+        DB.Comm.Server
         DB.Comm.MicroProto
         DB.Storage.InMem
         DB.Storage.InMem.TreeIdx

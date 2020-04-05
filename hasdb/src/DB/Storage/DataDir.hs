@@ -70,9 +70,9 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
           $ \case
           -- stopped, signal end of stream and done
               Left  _          -> publishEvent restoreOutlet nil
+          -- parse & eval evs to Edh value, then post to restoreOutlet 
               Right (dir, evs) -> case dir of
                 "" ->
-          -- parse & eval evs to Edh value, then post to restoreOutlet 
                   runEdhProc pgs
                     $ evalEdh "<edf>" evs
                     $ \(OriginalValue evd _ _) -> contEdhSTM $ do
@@ -83,12 +83,12 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
                     $  "invalid packet directive: "
                     <> dir
     void
-      -- parse & eval disk file content by another Edh program
+      -- start another Edh program to parse & eval disk file content
       $ forkFinally
           (runEdhProgram' ctx (ask >>= \pgs -> contEdhSTM $ restorePump pgs))
       $ \result -> do
           case result of
-            -- to cancel file reading as well as propagate
+            -- to cancel file reading as well as propagate the error
             Left  e -> throwTo thRestore e
             Right _ -> pure ()
           -- mark end of stream anyway
