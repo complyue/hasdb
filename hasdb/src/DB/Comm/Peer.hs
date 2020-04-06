@@ -33,18 +33,27 @@ data Peer = Peer {
 
 readPeerCommand :: Peer -> EdhProcExit -> EdhProc
 readPeerCommand (Peer !ident !eos !ho _) !exit = ask >>= \pgs ->
-  contEdhSTM $ tryReadTMVar eos >>= \case
-    Just (Right ()) -> exitEdhSTM pgs exit EdhNil
-    Just (Left  e ) -> edhErrorFrom pgs e $ \exv -> edhThrowSTM pgs exv
-    Nothing         -> takeTMVar ho >>= \(CommCmd !dir !src) -> case dir of
-      "err" -> do
-        let !ex = toException $ EdhPeerError ident src
-        void $ tryPutTMVar eos $ Left ex
-        edhErrorFrom pgs ex $ \exv -> edhThrowSTM pgs exv
-      "" ->
-        runEdhProc pgs
-          $ evalEdh (T.unpack ident) src
-          $ \(OriginalValue !cmdVal _ _) -> exitEdhProc exit cmdVal
-      _ -> throwEdhSTM pgs UsageError $ "invalid packet directive: " <> dir
+  contEdhSTM
+    $ edhPerformIO
+        pgs
+        (atomically $ (Right <$> takeTMVar ho) `orElse` (Left <$> readTMVar eos)
+        )
+    $ \case
+        Left (Right ()) -> exitEdhSTM pgs exit nil
+        Left (Left ex) -> edhErrorFrom pgs ex $ \exv -> edhThrowSTM pgs exv
+        Right (CommCmd !dir !src) -> case dir of
+          "" ->
+            runEdhProc pgs
+              $ evalEdh (T.unpack ident) src
+              $ \(OriginalValue !cmdVal _ _) -> exitEdhProc exit cmdVal
+          "err" -> do
+            let !ex = toException $ EdhPeerError ident src
+            void $ tryPutTMVar eos $ Left ex
+            edhErrorFrom pgs ex $ \exv -> edhThrowSTM pgs exv
+          _ ->
+            createEdhError pgs UsageError ("invalid packet directive: " <> dir)
+              $ \exv ex -> do
+                  void $ tryPutTMVar eos $ Left $ toException ex
+                  edhThrowSTM pgs exv
 
 
