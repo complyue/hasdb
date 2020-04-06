@@ -82,14 +82,18 @@ streamToDiskProc (ArgsPack !args !kwargs) !exit = do
   pgs <- ask
   case args of
     [EdhSink !persistOutlet, EdhString !dataFileFolder, EdhSink !sinkBaseDFD]
-      | Map.null kwargs -> edhWaitIO exit $ do
+      | Map.null kwargs
+      -> contEdhSTM
+        $ edhPerformIO
         -- not to use `unsafeIOToSTM` here, despite it being retry prone,
         -- nested `atomically` is particularly prohibited.
-        streamEdhReprToDisk (edh'context pgs)
-                            persistOutlet
-                            (T.unpack dataFileFolder)
-                            sinkBaseDFD
-        return nil
+            pgs
+            (streamEdhReprToDisk (edh'context pgs)
+                                 persistOutlet
+                                 (T.unpack dataFileFolder)
+                                 sinkBaseDFD
+            )
+        $ \_ -> exitEdhSTM pgs exit nil
     _ -> throwEdh EvalError "Invalid arg to `streamToDisk`"
 
 
@@ -118,7 +122,7 @@ streamFromDiskProc (ArgsPack !args !kwargs) !exit = do
       [EdhSink !restoreOutlet, EdhDecimal baseDFD] | Map.null kwargs ->
         -- not to use `unsafeIOToSTM` here, despite it being retry prone,
         -- nested `atomically` is particularly prohibited.
-        edhWaitIOSTM
+        edhPerformIO
             pgs
             ( streamEdhReprFromDisk ctxWithDb restoreOutlet
             $ fromIntegral

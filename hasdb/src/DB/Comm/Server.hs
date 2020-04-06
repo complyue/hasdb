@@ -61,7 +61,7 @@ servEdhClients !ctx !servAddr !servPort = withSocketsDo $ do
     let
       servPump :: EdhProgState -> STM ()
       servPump !pgs =
-        edhWaitIOSTM
+        edhPerformIO
             pgs
             (        atomically
             $        (   Right

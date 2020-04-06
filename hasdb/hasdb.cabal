@@ -65,6 +65,7 @@ library hasdb-internal
         DB.Array
         DB.Array.MMap
         DB.Comm.Server
+        DB.Comm.Peer
         DB.Comm.MicroProto
         DB.Storage.InMem
         DB.Storage.InMem.TreeIdx

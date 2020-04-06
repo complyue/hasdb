@@ -57,7 +57,7 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
     let
       restorePump :: EdhProgState -> STM ()
       restorePump !pgs =
-        edhWaitIOSTM
+        edhPerformIO
             pgs
             (        atomically
             $        (   Right
