@@ -21,7 +21,7 @@ type CmdSrc = Text
 data CommCmd = CommCmd !CmdDir !CmdSrc
   deriving (Eq, Show)
 instance Hashable CommCmd where
-  hashWithSalt s (CommCmd cmd val) = s `hashWithSalt` cmd `hashWithSalt` val
+  hashWithSalt s (CommCmd cmd src) = s `hashWithSalt` cmd `hashWithSalt` src
 
 
 data Peer = Peer {
@@ -30,6 +30,9 @@ data Peer = Peer {
     , peer'hosting :: !(TMVar CommCmd)
     , peer'posting :: !(TQueue CommCmd)
   } deriving (Eq)
+
+postPeerCommand :: Peer -> CommCmd -> STM ()
+postPeerCommand = writeTQueue . peer'posting
 
 readPeerCommand :: Peer -> EdhProcExit -> EdhProc
 readPeerCommand (Peer !ident !eos !ho po) !exit = ask >>= \pgs ->
