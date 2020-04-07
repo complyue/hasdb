@@ -97,6 +97,8 @@ class BuIndex {
 
 # this tells persistent attributes from transient ones
 method hasReConRepr( attrVal ) case attrVal of {
+  {{ _Array: _ }} -> true;
+  {{ Vector: _ }} -> true;
   ;| type( attrVal ) ?<= [
     # types reconstructable from its textual representation
     nil,  # absent attribute
@@ -105,7 +107,6 @@ method hasReConRepr( attrVal ) case attrVal of {
     PairType, TupleType, ListType, DictType,  # containers
     ArgsPackType,  # complexer container
   ] -> true
-  {{ Vector: _ }} -> true;
   false
 }
 
