@@ -2,6 +2,7 @@
 module DB.Batteries
   ( installDbBatteries
   , EdhVector
+  , module DB.Array
   )
 where
 
