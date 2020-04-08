@@ -14,8 +14,26 @@ those manifesting
 [GHC](https://www.haskell.org/ghc/)
 , powered by
 [Software Transactional Memory](http://hackage.haskell.org/package/stm)
-for
+for **Atomicity** and **Isolation** in
 [ACID](https://en.wikipedia.org/wiki/ACID)
 , thus native to
 [Haskell](https://haskell.org)
 in the first place.
+
+**HasDB** takes advantage of
+[Edh](https://github.com/e-wrks/edh)
+for easy programming of **Consistency** (the **C** in
+[ACID](https://en.wikipedia.org/wiki/ACID)
+) and **Concurrency** as a whole,
+in both the implementation of the **DBMS** itself, and implementations
+of various database applications.
+
+**Durability** in
+[ACID](https://en.wikipedia.org/wiki/ACID)
+is obtained through
+[Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html)
+for the **Graph**, and from
+[Non-Volatile-Storage](https://en.wikipedia.org/wiki/non-volatile)
+(practically i.e. clusters of hard disks or **SSD**s) backed
+[Virtual Memory](http://en.wikipedia.org/wiki/Virtual_memory)
+for the **Arrays** .
