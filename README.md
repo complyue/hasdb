@@ -34,7 +34,7 @@ of various database applications.
 [ACID](https://en.wikipedia.org/wiki/ACID)
 is obtained through
 [Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html)
-for the **Graph**, and from
+for the **Graph**, and by
 [Non-Volatile-Storage](https://en.wikipedia.org/wiki/non-volatile)
 (practically i.e. clusters of hard disks or **SSD**s) backed
 [Virtual Memory](http://en.wikipedia.org/wiki/Virtual_memory)
@@ -54,6 +54,6 @@ for database modeling, querying and updating, thus **neither** an
 **nor** a separate
 [Graph Query Language](https://github.com/graphql/graphql-spec)
 is needed. While transactional semantics already carried by the object
-attribute model, intrinsicly to **Edh** the language, the persistence
+attribute model, intrinsic to **Edh** the language, the persistence
 capability is added to vanilla **Edh** objects, as unintrusively as
 wearing an exoskeleton.
