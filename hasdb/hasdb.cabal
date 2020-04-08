@@ -64,9 +64,6 @@ library hasdb-internal
         DB.Vector
         DB.Array
         DB.Array.MMap
-        DB.Comm.Server
-        DB.Comm.Peer
-        DB.Comm.MicroProto
         DB.Storage.InMem
         DB.Storage.InMem.TreeIdx
         DB.Storage.DataDir
@@ -78,6 +75,7 @@ library hasdb-internal
     build-depends:
         base >=4.12,
         stm >=2.5,
+        nedh -any,
         edh -any,
         lossless-decimal -any,
         scientific -any,

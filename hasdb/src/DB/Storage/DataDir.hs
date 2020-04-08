@@ -28,8 +28,7 @@ import qualified Data.ByteString.Char8         as C
 import           Data.Text
 
 import           Language.Edh.EHI
-
-import           DB.Comm.MicroProto
+import           Language.Edh.Net
 
 
 edhDataFileToken, latestEdhDataFileName :: String
@@ -53,7 +52,7 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
     -- seems that closing an Fd will fail hard after `fdToHandle` but before
     -- `handleToFd`. may be an undocumented side-effect ?
     hSetBinaryMode fileHndl True
-    (pktSink, stopSignal) <- atomically $ liftA2 (,) newEmptyTMVar newEmptyTMVar
+    (pktSink, eos) <- atomically $ liftA2 (,) newEmptyTMVar newEmptyTMVar
     let
       restorePump :: EdhProgState -> STM ()
       restorePump !pgs =
@@ -65,7 +64,7 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
                            return (dir, decodeUtf8 payload)
                          )
                      )
-            `orElse` (Left <$> readTMVar stopSignal)
+            `orElse` (Left <$> readTMVar eos)
             )
           $ \case
           -- stopped, signal end of stream and done
@@ -94,7 +93,7 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
           -- mark end of stream anyway
           atomically $ publishEvent restoreOutlet nil
     -- pump out file contents
-    parsePackets fileHndl pktSink stopSignal
+    servePacketStream fileHndl pktSink eos
 
 
 streamEdhReprToDisk :: Context -> EventSink -> FilePath -> EventSink -> IO ()
