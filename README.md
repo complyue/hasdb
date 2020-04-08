@@ -56,5 +56,5 @@ for database modeling, querying and updating, thus **neither** an
 is needed. While transactional semantics already carried by the object
 attribute model, intrinsic to **Edh** the language, the persistence
 capability is added to a vanilla **Edh** object, so as to be either an
-**entity object** or an **relationship object**, as unintrusively as
+**entity object** or a **relationship object**, as unintrusively as
 wearing an exoskeleton.
