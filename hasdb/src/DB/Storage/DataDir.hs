@@ -148,18 +148,7 @@ streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
                     readTVarIO txtVar >>= \case
                       Nothing   -> return () -- eos 
                       Just !txt -> do
-                        let !payload =
-                              encodeUtf8 $ finishLine $ onSepLine $ txt
-                            !pktLen = B.length payload
-                        -- write packet header
-                        B.hPut fileHndl
-                          $  encodeUtf8
-                          $  T.pack
-                          $  "["
-                          <> show pktLen
-                          <> "#]"
-                        -- write packet payload
-                        B.hPut fileHndl payload
+                        sendTextPacket fileHndl "" txt
                         -- keep pumping
                         pumpEvd
                 pumpEvd
@@ -234,11 +223,3 @@ streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
         else if isAlreadyExistsError ioe
           then commitDataFile wipPath baseName (seqN + 1)
           else throwIO ioe
-
-  onSepLine :: Text -> Text
-  onSepLine "" = ""
-  onSepLine !t = if "\n" `isPrefixOf` t then t else "\n" <> t
-  finishLine :: Text -> Text
-  finishLine "" = ""
-  finishLine !t = if "\n" `isSuffixOf` t then t else t <> "\n"
-
