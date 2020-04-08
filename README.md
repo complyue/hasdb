@@ -39,3 +39,18 @@ for the **Graph**, and from
 (practically i.e. clusters of hard disks or **SSD**s) backed
 [Virtual Memory](http://en.wikipedia.org/wiki/Virtual_memory)
 for the **Arrays** .
+
+The
+[Magic Supers](https://github.com/e-wrks/edh/tree/master/Tour#magical-supers)
+mechanism from
+[Edh](https://github.com/e-wrks/edh)
+[Object System](https://github.com/e-wrks/edh/tree/master/Tour#inheritance-hierarchy)
+makes the language itself, directly suitable as both the
+[DDL](https://en.wikipedia.org/wiki/Data_definition_language)
+and
+[DML](https://en.wikipedia.org/wiki/Data_manipulation_language)
+for database modeling, querying and updating, thus **NO**
+[Object-Graph Mapping Layer](https://github.com/neo4j/neo4j-ogm)
+is needed. The persistence ability is added to vanilla
+[Edh](https://github.com/e-wrks/edh)
+objects, as unintrusively as wearing an exoskeleton.
