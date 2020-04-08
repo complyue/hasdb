@@ -93,7 +93,7 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
           -- mark end of stream anyway
           atomically $ publishEvent restoreOutlet nil
     -- pump out file contents
-    servePacketStream fileHndl pktSink eos
+    receivePacketStream fileHndl pktSink eos
 
 
 streamEdhReprToDisk :: Context -> EventSink -> FilePath -> EventSink -> IO ()
