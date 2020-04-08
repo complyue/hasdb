@@ -49,8 +49,10 @@ makes the language itself, directly suitable as both the
 [DDL](https://en.wikipedia.org/wiki/Data_definition_language)
 and
 [DML](https://en.wikipedia.org/wiki/Data_manipulation_language)
-for database modeling, querying and updating, thus **NO**
+for database modeling, querying and updating, thus **neither** an
 [Object-Graph Mapping Layer](https://github.com/neo4j/neo4j-ogm)
-is needed. The persistence ability is added to vanilla
+**nor** a separate
+[Graph Query Language](https://github.com/graphql/graphql-spec)
+is needed. The persistence capability is added to vanilla
 [Edh](https://github.com/e-wrks/edh)
 objects, as unintrusively as wearing an exoskeleton.
