@@ -45,7 +45,7 @@ The
 mechanism from
 [Edh](https://github.com/e-wrks/edh)
 [Object System](https://github.com/e-wrks/edh/tree/master/Tour#inheritance-hierarchy)
-makes the language itself, directly suitable as both the
+makes the language itself directly suitable as both the
 [DDL](https://en.wikipedia.org/wiki/Data_definition_language)
 and
 [DML](https://en.wikipedia.org/wiki/Data_manipulation_language)
@@ -53,6 +53,7 @@ for database modeling, querying and updating, thus **neither** an
 [Object-Graph Mapping Layer](https://github.com/neo4j/neo4j-ogm)
 **nor** a separate
 [Graph Query Language](https://github.com/graphql/graphql-spec)
-is needed. The persistence capability is added to vanilla
-[Edh](https://github.com/e-wrks/edh)
-objects, as unintrusively as wearing an exoskeleton.
+is needed. While transactional semantics already carried by the object
+attribute model, intrinsicly to **Edh** the language, the persistence
+capability is added to vanilla **Edh** objects, as unintrusively as
+wearing an exoskeleton.
