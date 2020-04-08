@@ -24,7 +24,9 @@ in the first place.
 [Edh](https://github.com/e-wrks/edh)
 for easy programming of **Consistency** (the **C** in
 [ACID](https://en.wikipedia.org/wiki/ACID)
-) and **Concurrency** as a whole,
+) and **Concurrency** as a whole (again thanks to
+[STM](http://hackage.haskell.org/package/stm)
+),
 in both the implementation of the **DBMS** itself, and implementations
 of various database applications.
 
