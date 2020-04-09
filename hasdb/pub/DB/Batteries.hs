@@ -23,10 +23,10 @@ installDbBatteries :: EdhWorld -> IO ()
 installDbBatteries !world = do
 
   -- this host module only used by 'db/machinery'
-  void $ installEdhModule world "db/Storage/InMem" $ \pgs modu -> do
+  void $ installEdhModule world "db/Storage/InMem" $ \pgs exit -> do
 
-    let ctx       = edh'context pgs
-        moduScope = objectScope ctx modu
+    let moduScope = contextScope $ edh'context pgs
+        modu      = thisObject moduScope
 
     !moduArts <-
       sequence
@@ -40,13 +40,15 @@ installDbBatteries !world = do
 
     updateEntityAttrs pgs (objEntity modu) moduArts
 
+    exit
+
   -- this host module contains procedures to do persisting to and
   -- restoring from disk, the supporting classes / procedures for
   -- restoration must all be available from this module
-  void $ installEdhModule world "db/RT" $ \pgs modu -> do
+  void $ installEdhModule world "db/RT" $ \pgs exit -> do
 
-    let ctx       = edh'context pgs
-        moduScope = objectScope ctx modu
+    let moduScope = contextScope $ edh'context pgs
+        modu      = thisObject moduScope
 
     !moduArts <-
       sequence
@@ -85,4 +87,6 @@ installDbBatteries !world = do
          ]
 
     updateEntityAttrs pgs (objEntity modu) moduArts
+
+    exit
 
