@@ -124,11 +124,18 @@ method runDbApp(dataDir, dbApp) {
   # the producer procedure to be launched for db app
   producer launchApp( outlet ) {
 
+    # to avoid the dreadful STM crash:
+    #  `thread blocked indefinitely in an STM transaction`
+    # in case some error occurred before cleanly shutdown,
+    # just mark eos of persistOutlet to let go `db._streamToDisk()`,
+    # and we will be able to see details of the error spat out.
+    defer { outlet <- nil }
+
     debug&>{go{
-      perceive outlet {  # dump persistence payload
-        nil -> console.debug <| 'persistOutlet EOS'
-        { pr } -> console.debug <| 'persistOutlet REC\n' ++ pr
+      for pr from outlet do {  # dump persistence payload
+        console.debug <| 'persistOutlet REC\n' ++ pr
       }
+      console.debug <| 'persistOutlet EOS'
     }}
 
     # read the most recent event from the sink, it must have been there already,

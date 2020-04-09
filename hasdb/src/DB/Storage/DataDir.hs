@@ -11,7 +11,6 @@ import           System.Directory
 import           System.Posix
 import qualified System.Posix.Files.ByteString as PB
 
-import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Exception
@@ -42,17 +41,17 @@ dataFileTimeStamp =
 
 streamEdhReprFromDisk :: Context -> EventSink -> Fd -> IO ()
 streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
-  then -- okay to be absent
-       -- signal end of stream
+  then -- okay for the latest data file to be absent
+       -- mark eos of the outlet and done
        atomically $ publishEvent restoreOutlet nil
   else restoreLatest
  where
   restoreLatest = bracket (fdToHandle dfd) handleToFd $ \fileHndl -> do
-    thRestore <- myThreadId
     -- seems that closing an Fd will fail hard after `fdToHandle` but before
     -- `handleToFd`. may be an undocumented side-effect ?
     hSetBinaryMode fileHndl True
-    (pktSink, eos) <- atomically $ liftA2 (,) newEmptyTMVar newEmptyTMVar
+    pktSink <- newEmptyTMVarIO
+    eos     <- newEmptyTMVarIO
     let
       restorePump :: EdhProgState -> STM ()
       restorePump !pgs =
@@ -67,7 +66,7 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
             `orElse` (Left <$> readTMVar eos)
             )
           $ \case
-          -- stopped, signal end of stream and done
+          -- stopped, mark eos of the outlet and done
               Left  _          -> publishEvent restoreOutlet nil
           -- parse & eval evs to Edh value, then post to restoreOutlet 
               Right (dir, evs) -> case dir of
@@ -87,10 +86,10 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
           (runEdhProgram' ctx (ask >>= \pgs -> contEdhSTM $ restorePump pgs))
       $ \result -> do
           case result of
-            -- to cancel file reading as well as propagate the error
-            Left  e -> throwTo thRestore e
-            Right _ -> pure ()
-          -- mark end of stream anyway
+            -- try mark eos for the file anyway
+            Left  e -> void $ atomically $ tryPutTMVar eos $ Left e
+            Right _ -> void $ atomically $ tryPutTMVar eos $ Right ()
+          -- mark eos of the outlet anyway
           atomically $ publishEvent restoreOutlet nil
     -- pump out file contents
     receivePacketStream fileHndl pktSink eos

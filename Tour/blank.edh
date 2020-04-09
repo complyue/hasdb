@@ -36,3 +36,8 @@ a1d[-2] = 7/11
 
 
 for (i, n) from a1d.all() do console.print(i: n)
+
+
+shutdown
+
+quit
