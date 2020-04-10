@@ -92,7 +92,7 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
           -- mark eos of the outlet anyway
           atomically $ publishEvent restoreOutlet nil
     -- pump out file contents
-    receivePacketStream fileHndl pktSink eos
+    receivePacketStream ("FD#" <> T.pack (show dfd)) fileHndl pktSink eos
 
 
 streamEdhReprToDisk :: Context -> EventSink -> FilePath -> EventSink -> IO ()
@@ -147,7 +147,7 @@ streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
                     readTVarIO txtVar >>= \case
                       Nothing   -> return () -- eos 
                       Just !txt -> do
-                        sendTextPacket fileHndl "" txt
+                        sendTextPacket (T.pack wipPath) fileHndl "" txt
                         -- keep pumping
                         pumpEvd
                 pumpEvd
