@@ -391,8 +391,8 @@ boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
         , EdhGnrtor
         , boiGroupsProc
         , PackReceiver
-          [ RecvArg "min" Nothing (Just (GodSendExpr edhNone))
-          , RecvArg "max" Nothing (Just (GodSendExpr edhNone))
+          [ RecvArg "min" Nothing (Just edhNoneExpr)
+          , RecvArg "max" Nothing (Just edhNoneExpr)
           ]
         )
       ]
@@ -604,8 +604,8 @@ buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
         , EdhGnrtor
         , buiRangeProc
         , PackReceiver
-          [ RecvArg "min" Nothing (Just (GodSendExpr edhNone))
-          , RecvArg "max" Nothing (Just (GodSendExpr edhNone))
+          [ RecvArg "min" Nothing (Just edhNoneExpr)
+          , RecvArg "max" Nothing (Just edhNoneExpr)
           ]
         )
       ]
