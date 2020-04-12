@@ -1,9 +1,0 @@
-
-# get the latest event data from a sink
-#
-# CAVEAT:
-# unlike `mre()`, this will block waiting the 1st event
-# into the sink if no one has yet been posted, so if no
-# other live thread can reach this sink, GHC will detect
-# an stm deadlock and crash the process.
-method latestEvent ( s ) for e from s do { return e }
