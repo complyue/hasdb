@@ -80,19 +80,22 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
                   throwEdhSTM pgs UsageError
                     $  "invalid packet directive: "
                     <> dir
-    void
-      -- start another Edh program to parse & eval disk file content
-      $ forkFinally
-          (runEdhProgram' ctx (ask >>= \pgs -> contEdhSTM $ restorePump pgs))
-      $ \result -> do
-          case result of
-            -- try mark eos for the file anyway
-            Left  e -> void $ atomically $ tryPutTMVar eos $ Left e
-            Right _ -> void $ atomically $ tryPutTMVar eos $ Right ()
-          -- mark eos of the outlet anyway
-          atomically $ publishEvent restoreOutlet nil
-    -- pump out file contents
-    receivePacketStream ("FD#" <> T.pack (show dfd)) fileHndl pktSink eos
+
+    -- pump out file contents from another dedicated thread
+    void $ forkIO $ receivePacketStream ("FD#" <> T.pack (show dfd))
+                                        fileHndl
+                                        pktSink
+                                        eos
+
+    -- run another Edh program to parse & eval disk file content
+    try (runEdhProgram' ctx (ask >>= \pgs -> contEdhSTM $ restorePump pgs))
+      >>= \result -> do
+            case result of
+              -- try mark eos for the file anyway
+              Left  e -> void $ atomically $ tryPutTMVar eos $ Left e
+              Right _ -> void $ atomically $ tryPutTMVar eos $ Right ()
+            -- mark eos of the outlet anyway
+            atomically $ publishEvent restoreOutlet nil
 
 
 streamEdhReprToDisk :: Context -> EventSink -> FilePath -> EventSink -> IO ()
