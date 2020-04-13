@@ -1,0 +1,109 @@
+
+import * 'net'
+import * 'db'
+
+
+class DbApp {
+
+  method __init__ (
+    servAddr as this.servAddr = '127.0.0.1',
+    servPort as this.servPort = 3722,
+  ) pass
+
+  method __serv_init__ () {
+    # implant the db and app instance into the service entry module for
+    # each connected client
+    that.db = this.db
+    that.app = this
+  }
+
+  # the effective `DataBack` instance for this app.
+  #
+  # will be assigned during `bootstrap()` method, which is called from the
+  # effective `DataBack` instance, after this app instance is passed to
+  # `runDbApp()`
+  db := '<uninitialized>'
+
+  # this method is called before existing back data from the disk file is
+  # restored by replaying history, machinery necessary for history replay
+  # needs to be setup by this method.
+  method bootstrap() {
+    # `DataBack` instance will put `this` App as its first super,
+    # `run()` is called against the db instance, so `that` here is
+    # the actual `DataBack` instance.
+    this.db = that
+
+    # import some classes from a lib parameterized with current db instance.
+    # ...
+
+    # create global indices
+    # ...
+  }
+
+  # this is the *main* method of the application, all transactional changes
+  # are backed to disk file during the course of this method running.
+  # once this method returns, the db is shutdown.
+  method run() {
+
+    # start the network service
+    case Server(
+      'db/demo/server',              # the service entry module
+      this.servAddr, this.servPort,  # network location to vend the service
+      init=this.__serv_init__,       # per-client service module initialization
+    ) of { server } -> this.server = server
+
+    {
+      # define commands this server supports
+      shutdown := Command()
+      # ...
+
+      console.print(
+        ' * You are in the DB server now, key in `shutdown` to commit all changes.',
+        ' * Note that quiting the process (by Ctrl^D) from within the server,',
+        '   without shutting down first, will leave your changes uncommitted.' )
+      while true {
+        case console.readCommand(ps1="(dbs)Đ: ", ps2="(dbs)Đ| ") of {
+          shutdown -> { break }
+          batteries.dir -> {  # custom response to the builtin `dir` command
+            printDir( scope() )
+            # ...
+          }
+          { cmdVal } -> {
+            console.print( cmdVal )
+            cmdVal = nil  # clear it
+          }
+        }
+      } $=> {  # catch exceptions
+
+        {{ ProgramHalt: ph }} -> {
+          throw ph  # escalate a halt to the program loop of the
+          # host interpreter, let it decide what to do.
+        }
+
+        {{ IOError:exc }} -> {
+          console.fatal <| 'IO error - ' ++ exc
+          throw exc  # escalate it to the program loop of the
+          # host interpreter, let it decide what to do.
+        }
+
+        { cmdExc } -> {
+          console.print( 'Recovered from error', exception=cmdExc )
+        }
+
+      }
+
+    } @=> {  # stop the network service anyway before db app shutdown
+
+      console.print( 'DB server shutting down ...' )
+
+      # stop accepting new network clients
+      this.server.stop()
+
+      # TODO ask currently connected clients atm to finish up gracefully,
+      #      and kick them after some timeout.
+
+    }
+
+  }
+}
+

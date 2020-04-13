@@ -1,0 +1,34 @@
+
+console.debug<| 'Serving db client - ' ++ peer
+
+# `db` and `app` should have been implanted into this service module,
+# by per-client service module initialization.
+
+# make those artifacts available from the app instance, esp. business
+# classes, directly available from here, so the client can reference
+# them by terse names, as in rpc commands it sends here.
+import (
+  # but some stuffs are not that interesting to the client
+  bootstrap as _, run as _,
+  server as _,
+  **,  # the rest artifacts are all imported
+) app
+
+
+{
+
+  # this loop is the intaking pump for rpc commands from the client
+  while false == peer.eol() case peer.readCommand() of {
+    # all db server commands are expected to return nil result,
+    # and ignored here.
+    { cmdVal } -> {
+      console.warn<| 'Unexpected server cmd result from ' ++ peer ++ '\n  '
+        ++ cmdVal
+    }
+  }
+
+} @=> {  # do some logging in this finally block
+  { exc } -> console.error<| 'DB client ' ++ peer ++ ' caused some error:\n  '
+     ++ exc
+  console.debug<| 'Done with db client - ' ++ peer
+}

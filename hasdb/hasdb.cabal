@@ -48,15 +48,16 @@ executable hasdb
                         BangPatterns TupleSections ScopedTypeVariables
     ghc-options: -Wall -threaded
     build-depends:
-        hasdb -any,
         base >=4.12,
         stm >=2.5,
+        hasdb -any,
+        nedh -any,
+        edh -any,
+        lossless-decimal -any,
         text -any,
         bytestring -any,
         mtl -any,
-        transformers -any,
-        edh -any,
-        lossless-decimal -any
+        transformers -any
 
 library hasdb-internal
     exposed-modules:

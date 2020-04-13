@@ -1,5 +1,5 @@
 
-import * 'demo/basics'
+import * 'db/demo/basics'
 
 runDbApp( 'data', DbApp() )
 

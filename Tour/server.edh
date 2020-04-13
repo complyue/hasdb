@@ -1,0 +1,22 @@
+
+import * 'db/demo/server'
+
+{
+  runDbApp( 'blank', DbApp(
+      # local network address to vend the db service
+      '127.0.0.1', 3722,
+  ) )
+}
+
+
+# in case you are copy & paste code to hasdb console,
+# you can skip all following content.
+
+console.info<| 'Demo db serving at ' ++ this.server.addrs()
+
+# in case this file is redirected as stdin to hasdb,
+# the following line will keep the db server running.
+# note this line will be interpreted as a dbs cmdl, not
+# a hasdb cmdl, so `this` will eval to the app.
+this.server.join()
+

@@ -9,6 +9,8 @@ import           Control.Concurrent.STM
 import qualified Data.Text                     as T
 
 import           Language.Edh.EHI
+import           Language.Edh.Net
+
 import           DB.Batteries
 
 -- the Edh module name to be run as the console
@@ -24,6 +26,9 @@ edhProgLoop !console = do
   -- many times the Edh programs crash
   world <- createEdhWorld console
   installEdhBatteries world
+
+  -- install batteries provided by net
+  installNetBatteries world
 
   -- install batteries provided by hasdb
   installDbBatteries world

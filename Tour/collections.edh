@@ -1,5 +1,5 @@
 
-case{import(**_) 'db/Storage/InMem' }of{modu}->shellWith(modu)
+case{ import (**_) 'db/Storage/InMem' } of { modu } -> shellWith( modu )
 
 {
   class BO {
