@@ -10,7 +10,7 @@ class DbApp {
     servPort as this.servPort = 3722,
   ) pass
 
-  method __serv_init__ () {
+  method __peer_init__ () {
     # implant the db and app instance into the service entry module for
     # each connected client
     that.db = this.db
@@ -49,7 +49,7 @@ class DbApp {
     case Server(
       'db/demo/server',              # the service entry module
       this.servAddr, this.servPort,  # network location to vend the service
-      init=this.__serv_init__,       # per-client service module initialization
+      init=this.__peer_init__,       # per-connection peer module initialization
     ) of { server } -> this.server = server
 
     {
@@ -65,7 +65,7 @@ class DbApp {
         case console.readCommand(ps1="(dbs)Đ: ", ps2="(dbs)Đ| ") of {
           shutdown -> { break }
           batteries.dir -> {  # custom response to the builtin `dir` command
-            printDir( scope() )
+            printDir()
             # ...
           }
           { cmdVal } -> {

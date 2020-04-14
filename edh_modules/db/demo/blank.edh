@@ -45,7 +45,7 @@ import * 'db'
         case console.readCommand(ps1="(app)Đ: ", ps2="(app)Đ| ") of {
           shutdown -> { break }
           batteries.dir -> {  # custom response to the builtin `dir` command
-            printDir( scope() )
+            printDir()
             # ...
           }
           { cmdVal } -> {
