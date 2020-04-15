@@ -7,11 +7,15 @@ dir
 
 jims
 
-compl.delete()
-
-dev.delete()
 
 {
+  debug&>{
+    # destruct something with something left, for each run 
+    # to change some thing
+    compl.delete()
+    dev.delete()
+  }
+
   {# TODO
    # ($=>) catches all errors including `ProgramHalt`,
    #       it's never a sane practice like below, though it
@@ -24,9 +28,9 @@ dev.delete()
       except TypeError:
         jim.version = 1
    #}
+  jim.version += 1 $=> jim.version = 1
 }
 
-jim.version += 1 $=> jim.version = 1
 
 shutdown
 

@@ -3,6 +3,7 @@ import * 'net'
 import * 'net/ncs'
 
 import * 'db'
+import * 'db/server'
 
 import * 'db/demo/schema'
 
@@ -59,14 +60,14 @@ class DbApp {
   # once this method returns, the db is shutdown.
   method run() {
 
-    # start the network service
-    case Server(
-      'db/demo/server',                # the service entry module
+    # start the db service
+    case dbOn(
+      'db/server',                     # the service entry module
       this._servAddr, this._servPort,  # network location to vend the service
       init=this.__db_client_init__,    # per-connection peer module initialization
     ) of { server } -> this.server = server
 
-    # start the network console
+    # start the networked console
     case consoleOn(
       'db/scon',                      # the console entry module
       this._conAddr, this._conPort,   # network location to vend the console

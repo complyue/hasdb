@@ -1,0 +1,36 @@
+
+{#
+ # DB network server
+ #}
+
+import * 'net'
+
+method dbOn (
+  dbsModu,                 # the DB service module
+  servAddr  ='127.0.0.1',  # local addr to bind
+  servPort  =3721,         # local port to bind
+  init      =None,         # peer module initialization
+) {
+  case Server (
+    dbsModu, servAddr, servPort, init=init,
+  ) of { dbs } -> { pass }
+
+  case dbs.addrs() of { addrs } ->
+    console.info<| 'Serving DB at: ' ++ addrs
+
+  # wait end-of-life for each client, log err if any
+  go for peer from dbs.clients do { go {
+    method _ (peer') {
+      peer'.join() @=> { nccExc } -> {
+        console.warn<| 'DB client caused trouble - '
+          ++ peer' ++ '\n' ++ nccExc
+      }
+    }
+  } (peer) }
+  # note an anoymous method is used above, to retain an attr
+  # named `peer'`, locally in the procedure's scope, as the
+  # loop will repeatedly change attr named `peer` in the outer
+  # scope
+
+  return dbs
+}

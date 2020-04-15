@@ -13,7 +13,7 @@ import * 'db/demo/server'
 # following lines will be interpreted as db app cmdl, not
 # the top-level db repl cmdl, so `this` will refer to the app
 
-console.info<| 'Demo db serving at ' ++ this.server.addrs()
+console.info<| 'Demo DB available at ' ++ this.server.addrs()
 
 
 # in case you are copy & paste code into hasdb top-level
