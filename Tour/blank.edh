@@ -4,6 +4,11 @@ import * 'db/demo/blank'
 runDbApp( 'blank', DbApp() )
 
 
+# here we play with some out-of-core arrays, the array's data
+# files are persisted, but their meta information (shap, dtype,
+# etc.) are not persisted, so will not get restored by history
+# replay next time this db app is run.
+
 
 a2d = db.Array('a/b/c/d',(3,7))
 

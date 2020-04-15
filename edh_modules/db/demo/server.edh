@@ -74,11 +74,11 @@ class DbApp {
     ) of { ncon } -> this.ncon = ncon
 
     go {
-      console.info<| `
+      console.info<| ```
  * You are in the DB app console now, issue shutdown to commit all changes.
  * Note that quiting the process (by Ctrl^D) from within the server, without
    shutting down first, will leave your changes uncommitted.
-`
+```
       while false == server.eol() {
         case console.readCommand(ps1="(dbs)Đ: ", ps2="(dbs)Đ| ") of {
           shutdown -> {
@@ -87,12 +87,12 @@ class DbApp {
             console.print( 'DB shutdown issued.' )
           }
           batteries.quit -> {
-            console.print( `
+            console.print( ```
  * You have left the db app console on stdio, only networked db app console
    is available for now.
  * You can only return to the db top-level repl after the app is shutdown,
    probably from a networked console.
-` )
+``` )
             break
           }
           batteries.dir -> {  # custom response to the builtin `dir` command

@@ -580,6 +580,7 @@ class SuperBack {
       # will be available from `that` as super attr
       this$kinAttr = idx
     )
+    return nil
   }
 
   # create a set for unordered kins, that automatically maintained by the data
@@ -599,8 +600,8 @@ class SuperBack {
     this._kins[ relClass:(''++relAttr) ] = (
       # will be available from `that` as super attr
       this$kinAttr = ks
-      nil  # return nothing
     )
+    return nil
   }
 
   # `extends db.superBack()` from a business object's __init__() triggers

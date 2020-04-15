@@ -64,8 +64,26 @@ class DbLib {
 
     }
 
-    # 
-    method income () {
+    {# this is somewhat similar to a stored procedure in relational DBMS,
+     # only more efficient under graph traversal usages.
+     #
+     # all node objects are always in memory, given sufficient physical
+     # RAM deployed for the graph data. they are inter-connected by 
+     # vanilla reference from a relationship object to its referees, or
+     # by kin index/set from a referee to its referers.
+     #
+     # transactional semantics are easily marked with `ai` keyword for
+     # proper boundaries. e.g. this method is ai enclosed, it's guaranteed
+     # to summarize a consistent collection of 'WorkFor' relationship data.
+     #
+     # it can naturally be nested inside bigger ai marked blocks for bigger
+     # transactions if that's appropriate.
+     # 
+     # and STM will automatically atomically retry this procedure as part of
+     # an inconsistent attempt of a transaction, until the whole transaction
+     # is finally processed in a consistent manner.
+     #}
+    method income () ai {
       cumSalary = 0
       for workFor from super.depts.all() do {
         cumSalary += workFor.salary
@@ -104,14 +122,14 @@ class DbLib {
 
     }
 
-    method headcount () {
+    method headcount () ai {
       hc = 0
       for workFor from super.workers.all() do
         hc += 1
       return hc
     }
 
-    method expenses () {
+    method expenses () ai {
       amt = 0
       for workFor from super.workers.all() do 
         amt += workFor.salary

@@ -10,14 +10,14 @@ import * 'db/demo/server'
   ) )
 }
 
-# following lines will be interpreted as dbs cmdl, not
-# hasdb cmdl, so `this` will eval to the app.
+# following lines will be interpreted as db app cmdl, not
+# the top-level db repl cmdl, so `this` will refer to the app
+
+console.info<| 'Demo db serving at ' ++ this.server.addrs()
 
 
 # in case you are copy & paste code into hasdb top-level
 # repl, you can skip all following content.
-
-console.info<| 'Demo db serving at ' ++ this.server.addrs()
 
 # quit the stdio db app console
 quit
