@@ -1,0 +1,134 @@
+
+import * 'db'
+
+
+# as `import` in Edh can have an object as the source, some object can
+# serve as a parameteric *module*, with nested classes, methods and/or
+# other procedures, those to be `import`ed into another app/lib
+# instance's scope.
+
+class DbLib {
+
+  # requires an effective `DataBack` instance for each instance of this lib
+  method __init__ (db as this.db) {
+
+    # create top-level indices wrt all business object classes provided by
+    # this lib
+    db.createIndex( expr deptByName, Depart, expr (
+      name:ASC,
+    ), unique=true )
+    db.createIndex( expr personByName, Person, expr name:ASC )
+
+  }
+
+  # a business object class, should `extends db.superBack()` from its 
+  # `__init__()` method, for the business object instances of this class
+  # to be persisted by the effective `DataBack`.
+  #
+  # although technically allowed, don't do it in the class procedure,
+  # that'll confuse `DataBack` when instances are restored by history
+  # replay, in which case a business object instance is created by
+  # non-standard construction with a `SuperBack` automatically added as
+  # a super.
+  #
+  # IMPL. DETAILS:
+  # during history replay, when persistent objects are restored from
+  # the backing storage, an instance under goes a non-standard
+  # construction, the `__init__()` method will NOT be called as in
+  # normal construction after the class procedure is called against
+  # the new instance. so as `extends db.superBack()` carries the
+  # persistent-object-creation semantic, it should be written in 
+  # the `__init__()` method instead of in the class procedure.
+
+  class Person {
+
+    method __init__(
+      name as this.name, 
+      age as this.age, 
+    ) extends db.superBack()
+
+    # invoked on initial creation of this persistent business object, or 
+    # during history replay from backing storage.
+    method __db_init__ () {
+
+      # create a kin set for all departs this person works for
+      super.createKinSet(
+        # target attr name, will be available as super attr
+        expr depts,
+        # business class for the relationship
+        WorkFor,
+        # attr key on the relationship class, whose value is a reference to
+        # this busines object
+        expr person,
+      )
+
+    }
+
+    # 
+    method income () {
+      cumSalary = 0
+      for workFor from super.depts.all() do {
+        cumSalary += workFor.salary
+      }
+      return cumSalary
+    }
+
+    method __repr__ () {
+      'Person(name=' ++ this.name ++ ', age=' ++ this.age ++ ')'
+    }
+
+  }
+
+  class Depart {
+
+    method __init__(
+      name as this.name,
+    ) extends db.superBack()
+
+    # invoked on initial creation of this persistent business object, or 
+    # during history replay from backing storage.
+    method __db_init__ () {
+
+      # create a kin index for persons working for this dept, sorted by salary
+      super.createKinIndex(
+        # target attr name, will be available as super attr
+        expr workers,
+        # business class for the relationship
+        WorkFor,
+        # attr key on the relationship class, whose value is a reference to
+        # this busines object
+        expr depart,
+        # sorting key attrs, descending sort by salary
+        expr ( salary:DESC, ),
+      )
+
+    }
+
+    method headcount () {
+      hc = 0
+      for workFor from super.workers.all() do
+        hc += 1
+      return hc
+    }
+
+    method expenses () {
+      amt = 0
+      for workFor from super.workers.all() do 
+        amt += workFor.salary
+      return amt
+    }
+
+    method __repr__ () {
+      'Depart(name=' ++ this.name ++ ')'
+    }
+
+  }
+
+  class WorkFor { method __init__(
+    person as this.person,
+    depart as this.depart,
+    salary as this.salary,
+  ) extends db.superBack() }
+
+}
+

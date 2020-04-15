@@ -1,7 +1,4 @@
 
-# re-export these host modules
-import * 'db/RT'
-
 # re-export these submodules
 import * './options'
 import * './machinery'

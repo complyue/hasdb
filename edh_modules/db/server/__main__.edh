@@ -2,7 +2,7 @@
 console.debug<| 'Serving db client - ' ++ peer
 
 # `db` and `app` should have been implanted into this service module,
-# by per-client service module initialization.
+# by per-connection peer module initialization method.
 
 # make those artifacts available from the app instance, esp. business
 # classes, directly available from here, so the client can reference
@@ -10,7 +10,7 @@ console.debug<| 'Serving db client - ' ++ peer
 import (
   # but some stuffs are not that interesting to the client
   bootstrap as _, run as _,
-  server as _,
+  server as _, ncon as _,
   **,  # the rest artifacts are all imported
 ) app
 

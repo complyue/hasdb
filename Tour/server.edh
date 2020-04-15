@@ -2,21 +2,26 @@
 import * 'db/demo/server'
 
 {
-  runDbApp( 'blank', DbApp(
+  runDbApp( 'demo', DbApp(
       # local network address to vend the db service
-      '127.0.0.1', 3722,
+      '127.0.0.1', 3721,
+      # local network address to vend the db console
+      '127.0.0.1', 3720,
   ) )
 }
 
+# following lines will be interpreted as dbs cmdl, not
+# hasdb cmdl, so `this` will eval to the app.
 
-# in case you are copy & paste code to hasdb console,
-# you can skip all following content.
+
+# in case you are copy & paste code into hasdb top-level
+# repl, you can skip all following content.
 
 console.info<| 'Demo db serving at ' ++ this.server.addrs()
 
-# in case this file is redirected as stdin to hasdb,
-# the following line will keep the db server running.
-# note this line will be interpreted as a dbs cmdl, not
-# a hasdb cmdl, so `this` will eval to the app.
-this.server.join()
+# quit the stdio db app console
+quit
+
+# quit the top-level db repl gracefuly at last
+quit
 

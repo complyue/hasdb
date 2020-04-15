@@ -1,0 +1,88 @@
+
+# this is the peer module for network console of hasdb
+
+import (  # import useful artifacts from 'db' for a console
+  runDbApp as _,  # this should not appear
+  **,  # import rest artifacts
+) 'db'
+
+# `db` and `app` should have been implanted into this module,
+# by per-connection peer module initialization method.
+
+# make those artifacts available from the app instance, esp. business
+# classes, directly available from here, so the client can reference
+# them by terse names, as in rpc commands it sends here.
+import (
+  # but some stuffs are not that interesting to the console client
+  bootstrap as _, run as _,
+  ncon as _,
+  **,  # the rest artifacts are all imported
+) app
+
+
+console.info<| 'Console client connected - ' ++ peer
+defer {
+  console.info<| 'Console client disconnected - ' ++ peer
+}
+
+# change console client's command prompt
+peer.postCommand(
+  repr( "(dbc)Đ: " )
+  0,  # this should direct to channel conin := 0
+)
+
+while false == peer.eol() {  # this is the *Loop* in so-called REPL
+  # Read+Eval (peer.readCommand) -> Print (peer.print) -> Loop
+
+  case peer.readCommand() of {
+    nil -> {  # conout an empty string or the console client will
+      # wait for its eval result forever
+      peer.postCommand(
+        "''",
+        1, # direct to channel conout := 1
+      )
+    }
+    shutdown -> {
+      # shutdown the db app and commit its changes
+      server.stop()
+      peer.postCommand(
+        "'DB shutdown issued.'",
+        1, # direct to channel conout := 1
+      )
+    }
+    batteries.quit -> { break }  # quit the networked db console
+    batteries.dir -> peer.postCommand(
+      repr( sprintDir() ),
+      1, # direct to channel conout := 1
+    )
+    { cmdVal } -> {
+      peer.postCommand(
+        repr( cmdVal ),
+        1, # direct to channel conout := 1
+      )
+      cmdVal = nil  # clear it
+    }
+  }
+
+} $=> {  # catch exceptions
+
+  {{ ProgramHalt: ph }} -> {
+    throw ph  # escalate a halt to the program loop of the
+    # host interpreter, let it decide what to do.
+  }
+
+  {{ IOError:exc }} -> {
+    console.fatal <| 'IO error - ' ++ exc
+    throw exc  # escalate it to the program loop of the
+    # host interpreter, let it decide what to do.
+  }
+
+  { cmdExc } -> {
+    peer.postCommand(
+      repr( 'Recovered from error\n  exception=' ++ cmdExc),
+      1, # direct to channel conout := 1
+    )
+  }
+
+}
+
