@@ -84,7 +84,7 @@ class DbApp {
    shutting down first, will leave your changes uncommitted.
 '''
       while false == server.eol() {
-        case console.readCommand(ps1="(dbs)Đ: ", ps2="(dbs)Đ| ") of {
+        case console.readCommand(ps1="(dbs)Đ: ") of {
           shutdown -> {
             # shutdown the db app and commit its changes
             server.stop()
