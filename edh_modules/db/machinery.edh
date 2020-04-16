@@ -84,12 +84,12 @@ class BuIndex {
 
   # to satisfy the duck typing criteria
   generator all() {
-    for ( k, bo ) from super.groups() do {
+    for ( k, bo ) from super.range() do {
       yield bo
     }
   }
   generator groups() {
-    for ( k, bo ) from super.groups() do {
+    for ( k, bo ) from super.range() do {
       yield pkargs( k, (bo,) )
     }
   }

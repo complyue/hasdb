@@ -132,6 +132,9 @@ arrayFlatMVector
 arrayFlatMVector (DbArray (ArrayMeta _ !shape _) !fptr) =
   M.unsafeFromForeignPtr fptr 0 (dbArraySize shape)
 
+-- XXX this is called from 'unsafeIOToSTM', and retry prone, has to be solid
+--     reliable when rapidly retried with the result possibly discarded
+-- TODO battle test this impl.
 mmapArray
   :: forall e . (Storable e, Num e) => Text -> ArrayMeta -> IO (DbArray e)
 mmapArray !dataDir meta@(ArrayMeta dataPath shape _) = do
