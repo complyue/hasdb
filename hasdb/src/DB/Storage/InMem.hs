@@ -366,37 +366,37 @@ boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
         , EdhString $ "Index " <> idxName <> " " <> specStr
         )
       ]
+    modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
+      [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
+      | (nm, vc, hp, mthArgs) <-
+        [ ( "<-"
+          , EdhMethod
+          , boiReindexProc
+          , PackReceiver [RecvArg "bo" Nothing Nothing]
+          )
+        , ( "^*"
+          , EdhMethod
+          , boiThrowAwayProc
+          , PackReceiver [RecvArg "bo" Nothing Nothing]
+          )
+        , ( "[]"
+          , EdhMethod
+          , boiLookupProc
+          , PackReceiver [RecvArg "keyValues" Nothing Nothing]
+          )
+        , ( "groups"
+          , EdhGnrtor
+          , boiGroupsProc
+          , PackReceiver
+            [ RecvArg "min" Nothing (Just edhNoneExpr)
+            , RecvArg "max" Nothing (Just edhNoneExpr)
+            ]
+          )
+        ]
+      ]
     let boi = BoIndex spec TreeMap.empty Map.empty
     boiVar <- newTMVar boi
     ctorExit $ toDyn boiVar
-  modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
-    [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
-    | (nm, vc, hp, mthArgs) <-
-      [ ( "<-"
-        , EdhMethod
-        , boiReindexProc
-        , PackReceiver [RecvArg "bo" Nothing Nothing]
-        )
-      , ( "^*"
-        , EdhMethod
-        , boiThrowAwayProc
-        , PackReceiver [RecvArg "bo" Nothing Nothing]
-        )
-      , ( "[]"
-        , EdhMethod
-        , boiLookupProc
-        , PackReceiver [RecvArg "keyValues" Nothing Nothing]
-        )
-      , ( "groups"
-        , EdhGnrtor
-        , boiGroupsProc
-        , PackReceiver
-          [ RecvArg "min" Nothing (Just edhNoneExpr)
-          , RecvArg "max" Nothing (Just edhNoneExpr)
-          ]
-        )
-      ]
-    ]
 
  where
 
@@ -579,37 +579,37 @@ buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
         , EdhString $ "UniqueIndex " <> idxName <> " " <> specStr
         )
       ]
+    modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
+      [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
+      | (nm, vc, hp, mthArgs) <-
+        [ ( "<-"
+          , EdhMethod
+          , buiReindexProc
+          , PackReceiver [RecvArg "bo" Nothing Nothing]
+          )
+        , ( "^*"
+          , EdhMethod
+          , buiThrowAwayProc
+          , PackReceiver [RecvArg "bo" Nothing Nothing]
+          )
+        , ( "[]"
+          , EdhMethod
+          , buiLookupProc
+          , PackReceiver [RecvArg "keyValues" Nothing Nothing]
+          )
+        , ( "range"
+          , EdhGnrtor
+          , buiRangeProc
+          , PackReceiver
+            [ RecvArg "min" Nothing (Just edhNoneExpr)
+            , RecvArg "max" Nothing (Just edhNoneExpr)
+            ]
+          )
+        ]
+      ]
     let bui = BuIndex spec TreeMap.empty Map.empty
     buiVar <- newTMVar bui
     ctorExit $ toDyn buiVar
-  modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
-    [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
-    | (nm, vc, hp, mthArgs) <-
-      [ ( "<-"
-        , EdhMethod
-        , buiReindexProc
-        , PackReceiver [RecvArg "bo" Nothing Nothing]
-        )
-      , ( "^*"
-        , EdhMethod
-        , buiThrowAwayProc
-        , PackReceiver [RecvArg "bo" Nothing Nothing]
-        )
-      , ( "[]"
-        , EdhMethod
-        , buiLookupProc
-        , PackReceiver [RecvArg "keyValues" Nothing Nothing]
-        )
-      , ( "range"
-        , EdhGnrtor
-        , buiRangeProc
-        , PackReceiver
-          [ RecvArg "min" Nothing (Just edhNoneExpr)
-          , RecvArg "max" Nothing (Just edhNoneExpr)
-          ]
-        )
-      ]
-    ]
 
  where
 
