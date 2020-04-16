@@ -36,11 +36,11 @@ class DbApp {
     # define extra commands this app supports
     # ...
 
-    console.info<| ```
+    console.info<| '''
  * You are in the DB app console now, issue shutdown to commit all changes.
  * Note that quiting the process (by Ctrl^D) from within the server, without
    shutting down first, will leave your changes uncommitted.
-```
+'''
     while true {
       case console.readCommand(ps1="(app)Đ: ", ps2="(app)Đ| ") of {
         shutdown -> { break }
