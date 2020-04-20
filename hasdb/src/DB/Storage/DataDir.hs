@@ -59,7 +59,7 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
             pgs
             (        atomically
             $        (   Right
-                     <$> (takeTMVar pktSink >>= \(dir, payload) ->
+                     <$> (takeTMVar pktSink >>= \(Packet dir payload) ->
                            return (dir, decodeUtf8 payload)
                          )
                      )
@@ -150,7 +150,7 @@ streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
                     readTVarIO txtVar >>= \case
                       Nothing   -> return () -- eos 
                       Just !txt -> do
-                        sendTextPacket (T.pack wipPath) fileHndl "" txt
+                        sendPacket (T.pack wipPath) fileHndl $ textPacket "" txt
                         -- keep pumping
                         pumpEvd
                 pumpEvd
