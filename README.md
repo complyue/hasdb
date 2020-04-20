@@ -14,9 +14,9 @@ those manifesting
 [GHC](https://www.haskell.org/ghc/)
 , powered by
 [Software Transactional Memory](http://hackage.haskell.org/package/stm)
-for **Atomicity** and **Isolation** in
+for **Atomicity** and **Isolation** (the **A** and **I** in
 [ACID](https://en.wikipedia.org/wiki/ACID)
-, thus native to
+), thus native to
 [Haskell](https://haskell.org)
 in the first place.
 
@@ -30,9 +30,9 @@ for easy programming of **Consistency** (the **C** in
 in both the implementation of the **DBMS** itself, and implementations
 of various database applications.
 
-**Durability** in
+**Durability** (the **D** in
 [ACID](https://en.wikipedia.org/wiki/ACID)
-is obtained through
+) is obtained through
 [Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html)
 for the **Graph**, and by
 [Non-Volatile-Storage](https://en.wikipedia.org/wiki/non-volatile)
