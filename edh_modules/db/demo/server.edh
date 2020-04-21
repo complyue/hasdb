@@ -77,6 +77,7 @@ class DbApp {
       init=this.__db_console_init__,  # per-connection peer module initialization
     ) of { ncon } -> this.ncon = ncon
 
+    # run the stdio console in a separate thread
     go {
       console.info<| '''
  * You are in the DB app console now, issue shutdown to commit all changes.
@@ -84,7 +85,7 @@ class DbApp {
    shutting down first, will leave your changes uncommitted.
 '''
       while false == server.eol() {
-        case console.readCommand(ps1="(dbs)Đ: ") of {
+        case console.readCommand(ps1="(dbs)Đ: ", ps2="Đ| ") of {
           shutdown -> {
             # shutdown the db app and commit its changes
             server.stop()
