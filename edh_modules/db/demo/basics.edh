@@ -1,7 +1,7 @@
 
 import * 'db'
 
-import * 'db/demo/schema'
+import * './schema'
 
 
 class DbApp {

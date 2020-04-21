@@ -1,13 +1,13 @@
 
 packages: */*.cabal
 
--- to use the version of Edh checked out locally
+-- to use the version of Edh/Nedh checked out locally
 --packages:
     ../edh/edh
     ../edh/lossless-decimal
     ../nedh/nedh
 
--- to use a version of Edh from github
+-- to use a version of Edh/Nedh from github
 --source-repository-package
 --    type: git
 --    location: https://github.com/e-wrks/edh

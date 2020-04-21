@@ -5,7 +5,7 @@ import * 'net/ncs'
 import * 'db'
 import * 'db/server'
 
-import * 'db/demo/schema'
+import * './schema'
 
 
 class DbApp {
@@ -72,7 +72,7 @@ class DbApp {
 
     # start the networked console
     case consoleOn(
-      'db/scon',                      # the console entry module
+      'db/ncs',                       # the console entry module
       this._conAddr, this._conPort,   # network location to vend the console
       init=this.__db_console_init__,  # per-connection peer module initialization
     ) of { ncon } -> this.ncon = ncon
