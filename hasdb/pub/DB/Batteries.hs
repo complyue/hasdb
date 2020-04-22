@@ -83,7 +83,7 @@ installDbBatteries !world = do
            ]
          ]
       ++ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
-         | (nm, hc) <- [("Vector", vecHostCtor), ("Array", aryHostCtor)]
+         | (nm, hc) <- [("Vector", vecHostCtor), ("DbArray", aryHostCtor)]
          ]
 
     updateEntityAttrs pgs (objEntity modu) moduArts

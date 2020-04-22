@@ -117,7 +117,7 @@ data ArrayMeta = ArrayMeta {
 
 
 data DbArray e where {
-    DbArray ::(Storable e, Num e) => ArrayMeta -> (ForeignPtr e) -> DbArray e
+    DbArray ::(Storable e, Num e) => ArrayMeta -> ForeignPtr e -> DbArray e
   } deriving (Typeable)
 
 arrayMeta :: (Storable e, Num e) => DbArray e -> ArrayMeta
@@ -181,7 +181,7 @@ type DbF8Array = DbArray Double
 type DbF4Array = DbArray Float
 
 
--- | host constructor Array(dataDir, dataPath, shape, dtype='f8', len1d=0)
+-- | host constructor DbArray(dataDir, dataPath, shape, dtype='f8', len1d=0)
 aryHostCtor
   :: EdhProgState
   -> ArgsPack  -- ctor args, if __init__() is provided, will go there too

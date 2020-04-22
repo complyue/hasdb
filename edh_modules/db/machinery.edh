@@ -10,7 +10,7 @@ import (
   className, 
 
   # don't re-export these
-  Array as _Array
+  DbArray as _DbArray
   newBo as _newBo, 
   streamToDisk as _streamToDisk, 
   streamFromDisk as _streamFromDisk, 
@@ -97,7 +97,7 @@ class BuIndex {
 
 # this tells persistent attributes from transient ones
 method hasReConRepr( attrVal ) case attrVal of {
-  {{ _Array: _ }} -> true;
+  {{ _DbArray: _ }} -> true;
   {{ Vector: _ }} -> true;
   ;| type( attrVal ) ?<= [
     # types reconstructable from its textual representation
@@ -209,7 +209,7 @@ class DataBack {
   }
 
   method Array (***apk) {
-    _Array( this.dataDir, ***apk )
+    _DbArray( this.dataDir, ***apk )
   }
 
   # all global indices created. a hierarchy of dicts by class then by key attr,
