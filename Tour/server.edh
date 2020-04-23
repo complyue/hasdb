@@ -2,7 +2,7 @@
 import * 'db/demo/server'
 
 {
-  runDbApp( 'demo', DbApp(
+  runDbApp( '/var/tmp/demo', DbApp(
       # local network address to vend the db service
       '127.0.0.1', 3721,
       # local network address to vend the db console

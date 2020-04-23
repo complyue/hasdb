@@ -1,7 +1,7 @@
 
 import * 'db/demo/basics'
 
-runDbApp( 'demo', DbApp() )
+runDbApp( '/var/tmp/demo', DbApp() )
 
 dir
 

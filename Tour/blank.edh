@@ -1,7 +1,7 @@
 
 import * 'db/demo/blank'
 
-runDbApp( 'blank', DbApp() )
+runDbApp( '/var/tmp/blank', DbApp() )
 
 
 # here we play with some out-of-core arrays, the array's data
