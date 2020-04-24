@@ -1,0 +1,51 @@
+
+# this is the peer module for client of hasdb
+
+# `db` should have been implanted into this module,
+# by per-connection peer module initialization method.
+
+console.debug<| 'Consuming DB service via: ' ++ peer
+defer {
+  console.info<| 'Done with DB service via: ' ++ peer
+}
+
+# channel 0 is named `conin` by convention, commands through it are
+# interpreted as command prompt change requests from the connected
+# service for this consumer client
+perceive peer.armChannel( conin := 0 ) {
+  # TODO support cmd prompt change request ?
+}
+
+# channel 1 is named `conout` by convention, commands through it are
+# directed to `console.print()`
+perceive peer.armChannel( conout := 1 ) { conOut } -> {
+  ;| ArgsPackType == type(conOut) -> {
+    console.print( ***conOut )
+  }
+  console.print( conOut )
+}
+
+# channel 2 is named `conmsg` by convention, commands through it are
+# directed to logging at `info` level
+perceive peer.armChannel( conmsg := 2 ) { conMsg } -> {
+  console.info<| conMsg
+}
+
+{ while false == peer.eol() {
+  case peer.readCommand() of {
+    { cmdVal } -> {
+      console.info<| 'Unexpected peer command from DB service via: '
+        ++ peer ++ '\n  ' ++ cmdVal
+    }
+    # note a command resulting in nil is normal, just pass by here
+  }
+} } @=> {
+  { exc } -> {
+    console.warn<| 'Error with DB service via: ' ++ peer
+      ++ '\n' ++ exc
+    fallthrough
+  }
+  peer.armedChannel(0) <- nil
+  peer.armedChannel(1) <- nil
+  peer.armedChannel(2) <- nil
+}

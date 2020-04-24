@@ -1,0 +1,48 @@
+
+import * 'net'
+import * 'db'
+import (
+  DbArray as _DbArray
+  **_  # consume (drop) extra artifacts exported there, don't fail
+) 'db/RT'
+
+
+# standard Nedh console channels
+conin  := 0
+conout := 1
+conmsg := 2
+
+
+class DbClient {
+
+  peer := '<uninitialized>'
+
+  method __init__ (
+    dataDir as this.dataDir,
+    addr      ='127.0.0.1', # remote addr to connect
+    port      =3721,        # remote port to connect
+    consumer  ='db/client',   # the peer module
+  ) {
+    case Client(
+      consumer,
+      addr, port,
+      init=this.__peer_init__,
+    ) of { clnt } -> {
+      # addrs() waits until the connection is make or failed
+      addrs = clnt.addrs()
+      console.info<| 'Connected to DB via: ' ++ addrs
+      # to inherit eol()/join()/stop() etc.
+      extends clnt
+    }
+  }
+
+  method __peer_init__() {
+    this.peer = that.peer
+    that.db = this
+  }
+
+  method Array (***apk) {
+    _DbArray( this.dataDir, ***apk )
+  }
+
+}
