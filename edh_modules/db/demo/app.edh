@@ -1,0 +1,78 @@
+
+import * 'db/client'
+
+
+method runApp (
+  dataDir,
+  addr      ='127.0.0.1', # db server addr to connect
+  port      =3721,        # db server port to connect
+) {
+  case DbClient(dataDir, addr, port, ) of { dbc } -> {
+    case dbc.peer() of { peer } -> {
+      this.peer = peer
+    }
+  }
+
+  peer.postCommand(expr
+    peer.p2c({$ conmsg $}, repr('Starting...'))
+  )
+
+  chData := 'data1'
+  producer grabData(outlet) {
+    peer.postCommand(expr {
+
+      case db.deptByName[ 'Dev' ] of {
+          { dev } -> { pass }
+
+          peer.p2c({$ conmsg $}, repr(
+              'Populating DB contents.'
+          ))
+
+          dev = Depart('Dev')
+
+          compl = Person( name = 'Compl', age = 41 )
+          jim = Person( name = 'Jim', age = 11 )
+
+          WorkFor( compl, dev, 12345 )
+          WorkFor( jim, dev, 54321 )
+      }
+
+      case db.personByName['Compl'] of { compl=>_ } -> {
+          peer.p2c({$ chData $}, repr(
+              {"name": compl.name, 'description': repr(compl)}
+          ))
+      }
+      case db.personByName['Jim'] of { jim=>_ } -> {
+          peer.p2c({$ chData $}, repr(
+              {"name": jim.name, 'version': repr( jim.version $=> 'legacy' )}
+          ))
+      }
+
+      peer.p2c({$ chData $}, repr(
+          {
+              'name': dev.name, 
+              'workers': ([] =< for (ixk, workRel) from dev.workers.range() do
+                  {'name': workRel.person.name, 'ixk': repr(ixk), }
+              ),
+
+          }
+      ))
+
+      peer.p2c({$ conmsg $}, repr("That's it atm."))
+      peer.p2c({$ chData $}, expr nil)
+
+    } )
+  }
+
+  for record from grabData(outlet=peer.armChannel(chData)) do {
+    console.print('Got data: ' ++ record)
+  }
+
+  peer.postCommand(expr
+    peer.p2c({$ conmsg $}, repr('Done.'))
+  )
+
+  dbc.stop()
+  dbc.join()  # rethrow any error encountered
+
+}
