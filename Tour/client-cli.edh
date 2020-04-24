@@ -18,7 +18,7 @@ cmdLineTo( '127.0.0.1', 3721, )
     case db.deptByName[ 'Dev' ] of {
       { dev } -> { pass }
 
-      peer.p2c(2, repr(
+      peer.p2c(conmsg, repr(
         'Populating DB contents.'
       ))
 
@@ -32,27 +32,27 @@ cmdLineTo( '127.0.0.1', 3721, )
     }
 
     case db.personByName['Compl'] of { compl=>_ } -> {
-      peer.p2c(2, repr(
+      peer.p2c(conmsg, repr(
         "Compl's record is: " ++ compl
       ))
     }
     case db.personByName['Jim'] of { jim=>_ } -> {
-      peer.p2c(2, repr(
+      peer.p2c(conmsg, repr(
         "Got a Jim ver# " ++ ( jim.version $=> 'legacy' )
       ))
     }
-    peer.p2c(2, repr(
+    peer.p2c(conmsg, repr(
       'Dev Org is ' ++ dev ++ ' with workers:'
     ))
     for (ixk, workRel) from dev.workers.range() do 
-      peer.p2c(2, repr(
+      peer.p2c(conmsg, repr(
         '  ' ++ workRel.person ++ ' in order of ' ++ ixk
       ))
 
     # some artificial delay
     for _ from console.everyMillis(200) do { break }
 
-    peer.p2c(1, repr("That's it atm."))
+    peer.p2c(conout, repr("That's it atm."))
   }
 }
 

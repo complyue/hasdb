@@ -1,21 +1,14 @@
 
 import * 'net'
-import * 'db'
 import (
   DbArray as _DbArray
   **_  # consume (drop) extra artifacts exported there, don't fail
 ) 'db/RT'
 
 
-# standard Nedh console channels
-conin  := 0
-conout := 1
-conmsg := 2
-
-
 class DbClient {
 
-  peer := '<uninitialized>'
+  _peer = sink
 
   method __init__ (
     dataDir as this.dataDir,
@@ -28,19 +21,26 @@ class DbClient {
       addr, port,
       init=this.__peer_init__,
     ) of { clnt } -> {
+      go {  # clear the peer anyway after network disconnected
+        clnt.join() $=> this._peer <- nil
+      }
       # addrs() waits until the connection is make or failed
-      addrs = clnt.addrs()
-      console.info<| 'Connected to DB via: ' ++ addrs
+      case clnt.addrs() of { addrs } ->
+        console.info<| 'Connected to DB via: ' ++ addrs
       # to inherit eol()/join()/stop() etc.
       extends clnt
     }
   }
 
   method __peer_init__() {
-    this.peer = that.peer
+    this._peer <- that.peer
     that.db = this
   }
 
+  # this waits until the peer is initialized then return it
+  method peer() latestEvent(this._peer)
+
+  # this makes `db.Array(...)` eval right at the client site
   method Array (***apk) {
     _DbArray( this.dataDir, ***apk )
   }

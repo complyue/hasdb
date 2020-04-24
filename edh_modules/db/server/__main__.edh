@@ -1,4 +1,8 @@
 
+# this is the peer module for network server of hasdb
+
+import * 'net/options'
+
 console.debug<| 'Serving db client - ' ++ peer
 
 # `db` and `app` should have been implanted into this service module,

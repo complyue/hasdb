@@ -1,10 +1,12 @@
 
 # this is the peer module for network console of hasdb
 
-import (  # import useful artifacts from 'db' for a console
-  runDbApp as _,  # this should not appear
-  **,  # import rest artifacts
-) 'db'
+import * 'net/options'
+
+console.info<| 'Console client connected - ' ++ peer
+defer {
+  console.info<| 'Console client disconnected - ' ++ peer
+}
 
 # `db` and `app` should have been implanted into this module,
 # by per-connection peer module initialization method.
@@ -19,11 +21,6 @@ import (
   **,  # the rest artifacts are all imported
 ) app
 
-
-console.info<| 'Console client connected - ' ++ peer
-defer {
-  console.info<| 'Console client disconnected - ' ++ peer
-}
 
 # change console client's command prompt
 peer.postCommand(

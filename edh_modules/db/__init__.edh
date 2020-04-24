@@ -1,4 +1,5 @@
 
-# re-export these submodules
+# re-export these submodules at top-level of 'db'
 import * './options'
-import * './machinery'
+import * './client'
+import * './server'

@@ -1,5 +1,6 @@
 
 import * 'db'
+import * 'db/machinery'
 
 
 # as `import` in Edh can have an object as the source, some object can

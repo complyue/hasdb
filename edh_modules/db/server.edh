@@ -15,6 +15,7 @@ method dbOn (
     dbsModu, servAddr, servPort, init=init,
   ) of { dbs } -> { pass }
 
+  # addrs() waits until listening succeeded or failed
   case dbs.addrs() of { addrs } ->
     console.info<| 'Serving DB at: ' ++ addrs
 

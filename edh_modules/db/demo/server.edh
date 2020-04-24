@@ -3,6 +3,7 @@ import * 'net'
 import * 'net/ncs'
 
 import * 'db'
+import * 'db/machinery'
 import * 'db/server'
 
 import * './schema'
