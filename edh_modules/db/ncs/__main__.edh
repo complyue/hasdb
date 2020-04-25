@@ -1,7 +1,8 @@
 
-# this is the peer module for network console of hasdb
+# this is the peer module for network console of the db
 
 import * 'net/options'
+import * 'db/options'
 
 console.info<| 'Console client connected - ' ++ peer
 defer {
@@ -23,9 +24,9 @@ import (
 
 
 # change console client's command prompt
-peer.postCommand(
+peer.p2c(
+  0, # direct to conin to change command prompt
   repr( "(dbc)Đ: " )
-  0,  # this should direct to channel conin := 0
 )
 
 while false == peer.eol() {  # this is the *Loop* in so-called REPL
@@ -34,28 +35,28 @@ while false == peer.eol() {  # this is the *Loop* in so-called REPL
   case peer.readCommand() of {
     nil -> {  # conout an empty string or the console client will
       # wait for its eval result forever
-      peer.postCommand(
-        "''",
+      peer.p2c(
         1, # direct to channel conout := 1
+        "''",
       )
     }
     shutdown -> {
       # shutdown the db app and commit its changes
       server.stop()
-      peer.postCommand(
-        "'DB shutdown issued.'",
+      peer.p2c(
         1, # direct to channel conout := 1
+        "'DB shutdown issued.'",
       )
     }
     batteries.quit -> { break }  # quit the networked db console
-    batteries.dir -> peer.postCommand(
-      repr( sprintDir() ),
+    batteries.dir -> peer.p2c(
       1, # direct to channel conout := 1
+      repr( sprintDir() ),
     )
     { cmdVal } -> {
-      peer.postCommand(
-        repr( cmdVal ),
+      peer.p2c(
         1, # direct to channel conout := 1
+        repr( cmdVal ),
       )
       cmdVal = nil  # clear it
     }
@@ -75,11 +76,14 @@ while false == peer.eol() {  # this is the *Loop* in so-called REPL
   }
 
   { cmdExc } -> {
-    peer.postCommand(
+    peer.p2c(
+      2, # direct to channel conmsg := 2
       repr( 'Recovered from error\n  exception=' ++ cmdExc),
+    )
+    peer.p2c(
       1, # direct to channel conout := 1
+      "''",
     )
   }
 
 }
-
