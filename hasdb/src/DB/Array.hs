@@ -176,9 +176,41 @@ writeFloatingArray !pgs !ary !idxs !ev !exit =
     unsafeIOToSTM $ M.unsafeWrite flatVec flatIdx ev
     exit rv
 
+readIntArray
+  :: (Storable a, Integral a)
+  => EdhProgState
+  -> DbArray a
+  -> [EdhValue]
+  -> (Decimal -> STM ())
+  -> STM ()
+readIntArray !pgs !ary !idxs !exit =
+  flatIndexInShape pgs idxs (dbArrayShape $ arrayMeta ary) $ \flatIdx -> do
+    let flatVec = arrayFlatVector ary
+        ev      = I.unsafeIndex flatVec flatIdx
+        rv :: Decimal
+        rv = fromIntegral ev
+    exit rv
+
+writeIntArray
+  :: (Storable a, Integral a)
+  => EdhProgState
+  -> DbArray a
+  -> [EdhValue]
+  -> a
+  -> (Decimal -> STM ())
+  -> STM ()
+writeIntArray !pgs !ary !idxs !ev !exit =
+  flatIndexInShape pgs idxs (dbArrayShape $ arrayMeta ary) $ \flatIdx -> do
+    let flatVec = arrayFlatMVector ary
+        rv :: Decimal
+        rv = fromIntegral ev
+    unsafeIOToSTM $ M.unsafeWrite flatVec flatIdx ev
+    exit rv
+
 
 type DbF8Array = DbArray Double
 type DbF4Array = DbArray Float
+type DbI8Array = DbArray Int64
 
 
 -- | host constructor DbArray(dataDir, dataPath, shape, dtype='f8', len1d=0)
@@ -244,6 +276,12 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
                 shape
                 len1d
               doIt $ toDyn ary
+            "i8" -> do
+              ary :: DbI8Array <- unsafeIOToSTM $ mmapArray dataDir $ ArrayMeta
+                dataPath
+                shape
+                len1d
+              doIt $ toDyn ary
             _ ->
               throwEdhSTM pgsCtor UsageError $ "Unsupported dtype: " <> dtype
  where
@@ -286,9 +324,18 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
       esd <- readTVar es
       case fromDynamic esd of
         Nothing -> case fromDynamic esd of
-          Nothing ->
-            throwEdhSTM pgs UsageError $ "bug: this is not an ary : " <> T.pack
-              (show esd)
+          Nothing -> case fromDynamic esd of
+            Nothing ->
+              throwEdhSTM pgs UsageError
+                $  "bug: this is not an ary : "
+                <> T.pack (show esd)
+            Just (ary :: DbI8Array) -> case args of
+              -- TODO support slicing, of coz need to tell a slicing index from
+              --      an element index first
+              [EdhTuple !idxs] -> readIntArray pgs ary idxs
+                $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
+              idxs -> readIntArray pgs ary idxs
+                $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
           Just (_ary :: DbF4Array) ->
             throwEdhSTM pgs UsageError "dtype=f4 not impl. yet"
         Just (ary :: DbF8Array) -> case args of
@@ -308,9 +355,32 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
       esd <- readTVar es
       case fromDynamic esd of
         Nothing -> case fromDynamic esd of
-          Nothing ->
-            throwEdhSTM pgs UsageError $ "bug: this is not an ary : " <> T.pack
-              (show esd)
+          Nothing -> case fromDynamic esd of
+            Nothing ->
+              throwEdhSTM pgs UsageError
+                $  "bug: this is not an ary : "
+                <> T.pack (show esd)
+            Just (ary :: DbI8Array) -> case args of
+              -- TODO support slicing assign, of coz need to tell a slicing index
+              --      from an element index first
+              [EdhTuple !idxs, EdhDecimal !dv] -> case D.decimalToInteger dv of
+                Nothing ->
+                  throwEdhSTM pgs UsageError $ "Invalid integer: " <> T.pack
+                    (show dv)
+                Just !iv -> do
+                  let (ev :: Int64) = fromInteger iv
+                  writeIntArray pgs ary idxs ev
+                    $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
+              [idx, EdhDecimal !dv] -> case D.decimalToInteger dv of
+                Nothing ->
+                  throwEdhSTM pgs UsageError $ "Invalid integer: " <> T.pack
+                    (show dv)
+                Just !iv -> do
+                  let (ev :: Int64) = fromInteger iv
+                  writeIntArray pgs ary [idx] ev
+                    $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
+              -- TODO more friendly error msg
+              _ -> throwEdhSTM pgs UsageError "Invalid index assign args"
           Just (_ary :: DbF4Array) ->
             throwEdhSTM pgs UsageError "dtype=f4 not impl. yet"
         Just (ary :: DbF8Array) -> case args of
@@ -338,9 +408,21 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
       esd <- readTVar es
       case fromDynamic esd of
         Nothing -> case fromDynamic esd of
-          Nothing ->
-            throwEdhSTM pgs UsageError $ "bug: this is not an ary : " <> T.pack
-              (show esd)
+          Nothing -> case fromDynamic esd of
+            Nothing ->
+              throwEdhSTM pgs UsageError
+                $  "bug: this is not an ary : "
+                <> T.pack (show esd)
+            Just ((DbArray (ArrayMeta !path !shape !len1d) _) :: DbI8Array) ->
+              exitEdhSTM pgs exit
+                $  EdhString
+                $  "db.Array("
+                <> T.pack (show path)
+                <> ", "
+                <> T.pack (show shape)
+                <> ", dtype='i8', len1d="
+                <> T.pack (show len1d)
+                <> ")"
           Just ((DbArray (ArrayMeta !path !shape !len1d) _) :: DbF4Array) ->
             exitEdhSTM pgs exit
               $  EdhString
@@ -373,10 +455,34 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
         esd <- readTVar es
         case fromDynamic esd of
           Nothing -> case fromDynamic esd of
-            Nothing ->
-              throwEdhSTM pgs UsageError
-                $  "bug: this is not an ary : "
-                <> T.pack (show esd)
+            Nothing -> case fromDynamic esd of
+              Nothing ->
+                throwEdhSTM pgs UsageError
+                  $  "bug: this is not an ary : "
+                  <> T.pack (show esd)
+              Just (ary :: DbI8Array) -> do
+                let
+                  flatVec = arrayFlatVector ary
+                  flatLen = I.length flatVec
+                  -- TODO yield ND index instead of flat index
+                  yieldResults :: Int -> STM ()
+                  yieldResults !i = if i >= flatLen
+                    then exitEdhSTM pgs exit nil
+                    else
+                      let ev = I.unsafeIndex flatVec i
+                      in
+                        runEdhProc pgs'
+                        $ iter'cb
+                            (EdhArgsPack
+                              (ArgsPack
+                                [ EdhDecimal $ fromIntegral i
+                                , EdhDecimal $ fromIntegral ev
+                                ]
+                                mempty
+                              )
+                            )
+                        $ \_ -> yieldResults (i + 1)
+                yieldResults 0
             Just (_ary :: DbF4Array) ->
               throwEdhSTM pgs UsageError "dtype=f4 not impl. yet"
           Just (ary :: DbF8Array) -> do
