@@ -306,11 +306,6 @@ class DataBack {
     # referencing another business object, settle the relationship
     {{ SuperBack: sbRef }} ->  {
       this._settle_rel( bo, sb, attrKey, attrVal, sbRef )
-
-      # persist the new relationship
-      this.persistOutlet <- (className(bo), sb.eid, [
-        (attrKey, className(attrVal), sbRef.eid)
-      ])
     }
 
     # handle trivially representable values, including `nil`
@@ -344,6 +339,10 @@ class DataBack {
     case sb._kins[ constructor(boRel):(''++refAttr) ] of { kin } -> {
       kin.(<-)(boRel)
     }
+    # persist the new relationship
+    this.persistOutlet <- (className(boRel), sbRel.eid, [
+      (refAttr, className(bo), sb.eid)
+    ])
   }
 
   # cleanup an old relationship
