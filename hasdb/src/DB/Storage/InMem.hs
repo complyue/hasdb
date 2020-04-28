@@ -230,7 +230,7 @@ edhIdxKeyVal !pgs (EdhTuple vs) !exit =
 -- update, don't support it unless sth else is figured out
 edhIdxKeyVal !pgs !val _ =
   throwEdhSTM pgs UsageError $ "Invalid value type to be indexed: " <> T.pack
-    (show $ edhTypeOf val)
+    (edhTypeNameOf val)
 
 edhIdxKeyVals
   :: EdhProgState -> EdhValue -> (Maybe [Maybe IdxKeyVal] -> STM ()) -> STM ()

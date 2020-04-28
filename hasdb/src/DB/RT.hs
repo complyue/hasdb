@@ -67,7 +67,7 @@ newBoProc (ArgsPack !args !kwargs) !exit = case args of
                     !badMth ->
                       throwEdhSTM pgs EvalError
                         $  "Invalid __db_init__() method type: "
-                        <> T.pack (show $ edhTypeOf badMth)
+                        <> T.pack (edhTypeNameOf badMth)
         _ -> error "bug: createEdhObject returned non-object"
   _ -> throwEdh EvalError "Invalid arg to `newBo`"
 

@@ -131,12 +131,14 @@ method runDbApp(dataDir, dbApp) {
     # and we will be able to see details of the error spat out.
     defer { outlet <- nil }
 
-    debug&>{go{
-      for pr from outlet do {  # dump persistence payload
-        console.debug <| 'persistOutlet REC\n' ++ pr
-      }
-      console.debug <| 'persistOutlet EOS'
-    }}
+{#
+debug&>{go{
+  for pr from outlet do {  # dump persistence payload
+    console.debug <| 'persistOutlet REC\n' ++ pr
+  }
+  console.debug <| 'persistOutlet EOS'
+}}
+#}
 
     # read the most recent event from the sink, it must have been there already,
     # as `_streamToDisk()` won't subscribe to the persist outlet (only after 
@@ -161,7 +163,8 @@ class DataBackLifecycle {
   # override some of the methods invoked here.
   method init( 
     persistOutlet as that.persistOutlet,  # put it to db instance
-    baseDFD ) {
+    baseDFD,
+  ) {
     # note `that` reference won't invoke magics, just does vanilla
     # attribute resolution and do the call against the result.
 
@@ -198,6 +201,9 @@ class DataBackLifecycle {
 
 class DataBack {
   extends( DataBackLifecycle() )
+
+  # this is to be set upon `runDbApp()`, which calls `db.init()`
+  persistOutlet := None
 
   method __init__ (
     dataDir as this.dataDir,
@@ -544,6 +550,23 @@ console.debug<| 'persist dump '++className(bo)++' # '++sb.eid
       error( 'bug: unsupported persistent record pattern' 
         type=type(persistRecord), value=persistRecord )
     }
+  }
+
+  # issue and wait-done a system sync point
+  method syncData(ssp = None) {
+    case type(ssp) of {
+      StringType -> { pass }
+      # use system nano timestamp if not specified
+      None -> ssp = 'ssp@' ++ console.now()
+      # the sync point identifier needs to be a string
+      ssp = repr(ssp)
+    }
+    # issue a system sync point
+    dsyncSig = sink
+    this.persistOutlet <- dsyncSig: ssp
+    # the sig sink will be marked eos after sync done, wait for that
+    for _ from dsyncSig do error('impossible')
+    return nil
   }
 
 }

@@ -48,6 +48,8 @@ class DbApp {
 
       WorkFor( compl, dev, 12345 )
       WorkFor( jim, dev, 54321 )
+
+      db.syncData()
     }
 
     # define extra commands this app supports

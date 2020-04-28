@@ -29,6 +29,8 @@ cmdLineTo( '127.0.0.1', 3721, )
 
       WorkFor( compl, dev, 12345 )
       WorkFor( jim, dev, 54321 )
+
+      db.syncData()
     }
 
     case db.personByName['Compl'] of { compl=>_ } -> {

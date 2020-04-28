@@ -35,6 +35,8 @@ method runApp (
 
           WorkFor( compl, dev, 12345 )
           WorkFor( jim, dev, 54321 )
+
+          db.syncData()
       }
 
       case db.personByName['Compl'] of { compl=>_ } -> {

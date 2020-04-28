@@ -66,16 +66,21 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
             `orElse` (Left <$> readTMVar eos)
             )
           $ \case
-          -- stopped, mark eos of the outlet and done
+              -- stopped, mark eos of the outlet and done
               Left  _          -> publishEvent restoreOutlet nil
-          -- parse & eval evs to Edh value, then post to restoreOutlet 
+              -- parse & eval evs to Edh value, then post to restoreOutlet 
               Right (dir, evs) -> case dir of
-                "" ->
+                "" -> -- record repr
                   runEdhProc pgs
                     $ evalEdh "<edf>" evs
                     $ \(OriginalValue evd _ _) -> contEdhSTM $ do
                         publishEvent restoreOutlet evd
                         restorePump pgs -- CPS recursion
+                "ssp" -> -- system sync point, just ignore here
+                  -- todo maybe to provide an option to stop at certain ssp
+                  --      here ? I'd think a separate utility to trim data
+                  --      files purposefully is more proper.
+                  restorePump pgs -- CPS recursion
                 _ ->
                   throwEdhSTM pgs UsageError
                     $  "invalid packet directive: "
@@ -97,6 +102,12 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
             -- mark eos of the outlet anyway
             atomically $ publishEvent restoreOutlet nil
 
+
+data PersistCmd = PersistFinish
+    | PersistAbort !SomeException
+    | PersistRepr !Text
+    | PersistSync !EventSink !Text
+  deriving (Show)
 
 streamEdhReprToDisk :: Context -> EventSink -> FilePath -> EventSink -> IO ()
 streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
@@ -125,35 +136,55 @@ streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
               -- and `handleToFd` is especially needed here for its documented side-effect
               -- of flushing the write buf.
               bracket (fdToHandle wipFd) handleToFd $ \fileHndl -> do
-                txtVar <- newTVarIO (Nothing :: Maybe Text)
                 hSetBinaryMode fileHndl True
+                hSetBuffering fileHndl NoBuffering
                 (subChan, _) <- atomically $ subscribeEvents persitOutlet
+                persistSink  <- newEmptyTMVarIO
                 let
                   pumpEvd = do
-                    void $ runEdhProgram' ctx $ do
-                      pgs <- ask
-                      contEdhSTM $ waitEdhSTM pgs (readTChan subChan) $ \case
-                        EdhNil -> -- end-of-stream reached
-                          writeTVar txtVar Nothing
-  -- TODO support SCN (System-Change-Number) or other means of checkpointing
-  --      schema, e.g. periodically inserted delimiter timestamp. then the
-  --      replay/restore can have such checkpoint based range selection.
-                        !evd ->
-                          runEdhProc pgs
-                            $ edhValueRepr evd
-                            $ \(OriginalValue evr _ _) -> case evr of
-                                EdhString evrs ->
-                                  contEdhSTM $ writeTVar txtVar $ Just evrs
-                                _ ->
-                                  error
-                                    "bug: edhValueRepr returned non-string in CPS"
-                    readTVarIO txtVar >>= \case
-                      Nothing   -> return () -- eos 
-                      Just !txt -> do
-                        sendPacket (T.pack wipPath) fileHndl $ textPacket "" txt
-                        -- keep pumping
-                        pumpEvd
-                pumpEvd
+                    pgs <- ask
+                    contEdhSTM $ waitEdhSTM pgs (readTChan subChan) $ \case
+                      -- end-of-stream reached
+                      EdhNil -> return ()
+                      -- system sync point issued
+                      EdhPair (EdhSink !dsyncSig) (EdhString !ssp) ->
+                        waitEdhSTM
+                            pgs
+                            (  putTMVar persistSink (PersistSync dsyncSig ssp)
+                            >> return nil
+                            )
+                          $ \_ -> runEdhProc pgs pumpEvd -- keep pumping
+                      -- one persistent record
+                      !evd -> edhValueReprSTM pgs evd $ \evrs ->
+                        waitEdhSTM
+                            pgs
+                            (  putTMVar persistSink (PersistRepr evrs)
+                            >> return nil
+                            )
+                          $ \_ -> runEdhProc pgs pumpEvd -- keep pumping
+                void $ forkFinally (runEdhProgram' ctx pumpEvd) $ \case
+                  Left (e :: SomeException) ->
+                    atomically $ putTMVar persistSink $ PersistAbort e
+                  Right _ -> atomically $ putTMVar persistSink PersistFinish
+                let !pfPeer = T.pack wipPath
+                    pumpIO  = atomically (takeTMVar persistSink) >>= \case
+                      PersistRepr !txt -> do
+                        sendPacket pfPeer fileHndl $ textPacket "" txt
+                        pumpIO -- keep pumping
+                      PersistSync !dsyncSig !ssp -> do
+                        -- write out the marker packet for system-sync-point
+                        sendPacket pfPeer fileHndl $ textPacket "ssp" ssp
+                        -- flush handle buffer in case, even tho we issues 
+                        --    `hSetBuffering fileHndl NoBuffering`
+                        hFlush fileHndl
+                        -- wait until the fs driver says data is persisted
+                        fileSynchronise wipFd
+                        -- mark eos so as to be the done signal of data sync
+                        atomically $ publishEvent dsyncSig nil
+                        pumpIO -- keep pumping
+                      PersistFinish   -> return ()
+                      PersistAbort !e -> throwIO e
+                pumpIO
                 !dbShutdownTimeStamp <- dataFileTimeStamp
                 pubName              <- commitDataFile
                   wipPath
