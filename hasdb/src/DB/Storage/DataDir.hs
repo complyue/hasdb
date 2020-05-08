@@ -66,8 +66,10 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
             `orElse` (Left <$> readTMVar eos)
             )
           $ \case
+              -- propagate the error during restoration
+              Left  (Left  e)  -> throwEdhSTM pgs EvalError $ T.pack $ show e
               -- stopped, mark eos of the outlet and done
-              Left  _          -> publishEvent restoreOutlet nil
+              Left  (Right _)  -> publishEvent restoreOutlet nil
               -- parse & eval evs to Edh value, then post to restoreOutlet 
               Right (dir, evs) -> case dir of
                 "" -> -- record repr
@@ -101,6 +103,13 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
               Right _ -> void $ atomically $ tryPutTMVar eos $ Right ()
             -- mark eos of the outlet anyway
             atomically $ publishEvent restoreOutlet nil
+
+    -- check propagate any error encountered
+    atomically (tryReadTMVar eos) >>= \case
+      Just (Right _) -> return ()
+      Just (Left  e) -> throwIO e
+      Nothing ->
+        throwIO $ EdhPeerError (T.pack $ "FD#" <> show dfd) "never eos"
 
 
 data PersistCmd = PersistFinish
