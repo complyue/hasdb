@@ -41,6 +41,9 @@ class DbLib {
   # persistent-object-creation semantic, it should be written in 
   # the `__init__()` method instead of in the class procedure.
 
+  {#
+   # An entity business class
+   #}
   class Person {
 
     method __init__(
@@ -59,7 +62,7 @@ class DbLib {
         # business class for the relationship
         WorkFor,
         # attr key on the relationship class, whose value is a reference to
-        # this busines object
+        # this business object
         expr person,
       )
 
@@ -98,6 +101,9 @@ class DbLib {
 
   }
 
+  {#
+   # An entity business class
+   #}
   class Depart {
 
     method __init__(
@@ -115,7 +121,7 @@ class DbLib {
         # business class for the relationship
         WorkFor,
         # attr key on the relationship class, whose value is a reference to
-        # this busines object
+        # this business object
         expr depart,
         # sorting key attrs, descending sort by salary
         expr ( salary:DESC, ),
@@ -143,6 +149,9 @@ class DbLib {
 
   }
 
+  {#
+   # A relationship business class
+   #}
   class WorkFor { method __init__(
     person as this.person,
     depart as this.depart,
