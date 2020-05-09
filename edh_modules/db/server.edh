@@ -22,9 +22,9 @@ method dbOn (
   # wait end-of-life for each client, log err if any
   go for peer from dbs.clients do { go {
     method _ (peer') {
-      peer'.join() @=> { nccExc } -> {
+      peer'.join() $=> { dbcExc } -> {
         console.warn<| 'DB client caused trouble - '
-          ++ peer' ++ '\n' ++ nccExc
+          ++ peer' ++ '\n' ++ dbcExc
       }
     }
   } (peer) }
