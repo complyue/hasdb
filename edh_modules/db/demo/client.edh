@@ -77,6 +77,9 @@ export method runApp (
     peer.p2c({$ conmsg $}, repr('Done.'))
   )
 
+  # wait a tiny while, or server can encounter error: connection reset by peer
+  for _ from console.everyMillis(100) do { break }
+
   dbc.stop()
   dbc.join()  # rethrow any error encountered
 
