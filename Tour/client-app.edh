@@ -1,5 +1,5 @@
 
-import (runApp, **_) 'db/demo/app'
+import (runApp, **_) 'db/demo/client'
 
 runApp( '/var/tmp/demo', '127.0.0.1', 3721, )
 

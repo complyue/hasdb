@@ -5,7 +5,7 @@
 
 import * 'net'
 
-method dbOn (
+export method dbOn (
   dbsModu,                 # the DB service module
   servAddr  ='127.0.0.1',  # local addr to bind
   servPort  =3721,         # local port to bind

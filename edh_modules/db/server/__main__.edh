@@ -11,12 +11,7 @@ console.debug<| 'Serving db client - ' ++ peer
 # make those artifacts available from the app instance, esp. business
 # classes, directly available from here, so the client can reference
 # them by terse names, as in rpc commands it sends here.
-import (
-  # but some stuffs are not that interesting to the client
-  bootstrap as _, run as _,
-  server as _, ncon as _,
-  **,  # the rest artifacts are all imported
-) app
+import * app
 
 
 {

@@ -3,37 +3,35 @@
  # entity/relationship business objects.
  #}
 
-import (
-
-  # re-export these
+# re-export these
+export import (
   Vector, 
-  className, 
-
-  # don't re-export these
-  DbArray as _DbArray
-  newBo as _newBo, 
-  streamToDisk as _streamToDisk, 
-  streamFromDisk as _streamFromDisk, 
-
-  **_  # consume (drop) extra artifacts exported there, don't fail
+  className,
+  **_,  # consume (drop) extra artifacts exported there, don't fail
 ) 'db/RT'
 
+# don't re-export these
+import (
+  DbArray,
+  newBo,
+  streamToDisk,
+  streamFromDisk,
+  **_,  # consume (drop) extra artifacts exported there, don't fail
+) 'db/RT'
 
 import (
-
   # extend the host classes as to be duck-typed collection classes
   BoSet as _BoSet,
   BoIndex as _BoIndex,
   BuIndex as _BuIndex,
-
-  **_  # consume (drop) extra artifacts exported there, don't fail
+  **_,  # consume (drop) extra artifacts exported there, don't fail
 ) 'db/Storage/InMem'
 
-# duck-typed KinColection, concrete implementations:
+# duck-typed KinColection, abstracting concrete implementations:
 #  * BoSet    - unordered set
 #  * BoIndex  - sorted by index key attributes, non-unique
 #  * BuIndex  - sorted by index key attributes, unique
-class KinCollection {
+export class KinCollection {
 
   # to enumerate all relatipnship business objects one by one
   generator all() error('abstract method')
@@ -48,7 +46,7 @@ class KinCollection {
 
 }
 
-class BoSet {
+export class BoSet {
   # no ctor arg
   extends _BoSet()
 
@@ -61,7 +59,7 @@ class BoSet {
   }
 }
 
-class BoIndex {
+export class BoIndex {
   # pass verbatim ctor args to the super host class
   method __init__(***apk) extends _BoIndex(***apk)
 
@@ -78,7 +76,7 @@ class BoIndex {
   }
 }
 
-class BuIndex {
+export class BuIndex {
   # pass verbatim ctor args to the super host class
   method __init__(***apk) extends _BuIndex(***apk)
 
@@ -97,7 +95,7 @@ class BuIndex {
 
 # this tells persistent attributes from transient ones
 method hasReConRepr( attrVal ) case attrVal of {
-  {{ _DbArray: _ }} -> true;
+  {{ DbArray: _ }} -> true;
   {{ Vector: _ }} -> true;
   ;| type( attrVal ) ?<= [
     # types reconstructable from its textual representation
@@ -110,7 +108,7 @@ method hasReConRepr( attrVal ) case attrVal of {
   false
 }
 
-method runDbApp(dataDir, dbApp) {
+export method runDbApp(dataDir, dbApp) {
 
   # the persister will post the fd it opened as the latest data file
   # to this sink, it'll hold this fd open until it finalized a new data
@@ -156,8 +154,8 @@ class DataBackLifecycle {
 
   # make these host methods available from db's super, and called against the db
   # instance, so the host procs can obtain the db instance via `that` reference
-  _streamToDisk = _streamToDisk
-  _streamFromDisk = _streamFromDisk
+  _streamToDisk = streamToDisk
+  _streamFromDisk = streamFromDisk
 
   # this is the entry point of a db app, the concrete app can selectively
   # override some of the methods invoked here.
@@ -199,7 +197,7 @@ class DataBackLifecycle {
 
 }
 
-class DataBack {
+export class DataBack {
   extends( DataBackLifecycle() )
 
   # this is to be set upon `runDbApp()`, which calls `db.init()`
@@ -215,7 +213,7 @@ class DataBack {
   }
 
   method Array (***apk) {
-    _DbArray( this.dataDir, ***apk )
+    DbArray( this.dataDir, ***apk )
   }
 
   # all global indices created. a hierarchy of dicts by class then by key attr,
@@ -492,7 +490,7 @@ console.debug<| 'persist dump '++className(bo)++' # '++sb.eid
             # this bo not created yet, do non-standard construction of the
             # business object
             sb = SuperBack( this, eid )
-            bo = _newBo( boClass, sb )
+            bo = newBo( boClass, sb )
 
             bocExtent[eid] = bo
           }
@@ -584,7 +582,7 @@ console.debug<| 'persist dump '++className(bo)++' # '++sb.eid
 
 }
 
-class SuperBack {
+export class SuperBack {
 
   method __init__ (
     db as this.db, eid as this.eid,

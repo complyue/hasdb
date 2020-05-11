@@ -8,7 +8,7 @@ import * 'db/machinery'
 # other procedures, those to be `import`ed into another app/lib
 # instance's scope.
 
-class DbLib {
+export class DbLib {
 
   # requires an effective `DataBack` instance for each instance of this lib
   method __init__ (db as this.db) {
@@ -44,7 +44,7 @@ class DbLib {
   {#
    # An entity business class
    #}
-  class Person {
+  export class Person {
 
     method __init__(
       name as this.name, 
@@ -104,7 +104,7 @@ class DbLib {
   {#
    # An entity business class
    #}
-  class Depart {
+  export class Depart {
 
     method __init__(
       name as this.name,
@@ -152,7 +152,7 @@ class DbLib {
   {#
    # A relationship business class
    #}
-  class WorkFor { method __init__(
+  export class WorkFor { method __init__(
     person as this.person,
     depart as this.depart,
     salary as this.salary,

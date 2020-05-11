@@ -1,11 +1,13 @@
 
-import * 'db'
-import * 'db/machinery'
+export { # re-export these imports
+  import * 'db'
+  import * 'db/machinery'
 
-import * './schema'
+  import * './schema'
+}
 
 
-class DbApp {
+export class DbApp {
 
   # the effective `DataBack` instance for this app.
   #

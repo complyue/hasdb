@@ -1,8 +1,11 @@
 
-import * 'db/client'
+export { # re-export these imports
+  import * 'net'
+  import * 'db/client'
+}
 
 
-method runApp (
+export method runApp (
   dataDir,
   addr      ='127.0.0.1', # db server addr to connect
   port      =3721,        # db server port to connect

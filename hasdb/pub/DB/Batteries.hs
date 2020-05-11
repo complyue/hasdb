@@ -11,6 +11,8 @@ import           Prelude
 
 import           Control.Monad.Reader
 
+import qualified Data.HashMap.Strict           as Map
+
 import           DB.RT
 import           DB.Vector
 import           DB.Array
@@ -30,7 +32,7 @@ installDbBatteries !world = do
 
     !moduArts <-
       sequence
-        $ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
+        $ [ (nm, ) <$> mkHostClass moduScope nm True hc
           | (nm, hc) <-
             [ ("BoSet"  , bosHostCtor)
             , ("BoIndex", boiHostCtor)
@@ -38,7 +40,12 @@ installDbBatteries !world = do
             ]
           ]
 
-    updateEntityAttrs pgs (objEntity modu) moduArts
+    artsDict <- createEdhDict
+      $ Map.fromList [ (EdhString k, v) | (k, v) <- moduArts ]
+    updateEntityAttrs pgs (objEntity modu)
+      $  [ (AttrByName k, v) | (k, v) <- moduArts ]
+      ++ [(AttrByName "__exports__", artsDict)]
+
 
     exit
 
@@ -52,7 +59,7 @@ installDbBatteries !world = do
 
     !moduArts <-
       sequence
-      $  [ (AttrByName nm, ) <$> mkHostProc moduScope mc nm hp args
+      $  [ (nm, ) <$> mkHostProc moduScope mc nm hp args
          | (mc, nm, hp, args) <-
            [ (EdhMethod, "className", classNameProc, WildReceiver)
            , ( EdhMethod
@@ -82,11 +89,15 @@ installDbBatteries !world = do
              )
            ]
          ]
-      ++ [ (AttrByName nm, ) <$> mkHostClass moduScope nm True hc
+      ++ [ (nm, ) <$> mkHostClass moduScope nm True hc
          | (nm, hc) <- [("Vector", vecHostCtor), ("DbArray", aryHostCtor)]
          ]
 
-    updateEntityAttrs pgs (objEntity modu) moduArts
+    artsDict <- createEdhDict
+      $ Map.fromList [ (EdhString k, v) | (k, v) <- moduArts ]
+    updateEntityAttrs pgs (objEntity modu)
+      $  [ (AttrByName k, v) | (k, v) <- moduArts ]
+      ++ [(AttrByName "__exports__", artsDict)]
 
     exit
 

@@ -1,12 +1,12 @@
 
 import * 'net'
 import (
-  DbArray as _DbArray
+  DbArray,
   **_  # consume (drop) extra artifacts exported there, don't fail
 ) 'db/RT'
 
 
-class DbClient {
+export class DbClient {
 
   _peer = sink
 
@@ -42,7 +42,7 @@ class DbClient {
 
   # this makes `db.Array(...)` eval right at the client site
   method Array (***apk) {
-    _DbArray( this.dataDir, ***apk )
+    DbArray( this.dataDir, ***apk )
   }
 
 }

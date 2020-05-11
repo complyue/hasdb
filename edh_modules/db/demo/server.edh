@@ -1,15 +1,17 @@
 
-import * 'net'
-import * 'net/ncs'
+export { # re-export these imports
+  import * 'net'
+  import * 'net/ncs'
 
-import * 'db'
-import * 'db/machinery'
-import * 'db/server'
+  import * 'db'
+  import * 'db/machinery'
+  import * 'db/server'
 
-import * './schema'
+  import * './schema'
+}
 
 
-class DbApp {
+export class DbApp {
 
   method __init__ (
     servAddr as this._servAddr = '127.0.0.1',
@@ -52,8 +54,8 @@ class DbApp {
     this.db = that
 
     # import some schema - business classes, indices get created - from
-    # some lib
-    import * DbLib( db )
+    # some lib, with re-exporting
+    export import * DbLib( db )
 
     # define more business classes, create more top-level indices, etc.
     # ...

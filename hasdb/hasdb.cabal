@@ -34,6 +34,7 @@ library
         stm >=2.5,
         text -any,
         bytestring -any,
+        unordered-containers -any,
         mtl -any,
         transformers -any,
         edh -any
