@@ -24,9 +24,13 @@ export class DbClient {
       go {  # clear the peer anyway after network disconnected
         clnt.join() $=> this._peer <- nil
       }
-      # addrs() waits until the connection is make or failed
-      case clnt.addrs() of { addrs } ->
-        console.info<| 'Connected to DB via: ' ++ addrs
+      # addrs() waits until the connection is made or failed
+      case clnt.addrs() of {
+        { addr => _ } -> console.info<| 'Connected to DB via: ' ++ addr
+        clnt.join()  # connection has failed, propagate the error
+        # in case clnt.join() didn't throw, though unlikely
+        error('Can not connect to db.')
+      }
       # to inherit eol()/join()/stop() etc.
       extends clnt
     }
