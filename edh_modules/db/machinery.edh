@@ -422,6 +422,9 @@ console.debug<| 'persist dump '++className(bo)++' # '++sb.eid
         _dumpBo( bo, sb )
       }
     }
+
+    # baseline the base data from history replay
+    this.syncData('<baseline>')
   }
 
   method _cleanout_obj ( bo, sb, persist=true ) {
