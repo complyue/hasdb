@@ -4,20 +4,27 @@
  #}
 
 import * 'net'
+import * 'net/ncs'
+
 
 export method dbOn (
-  dbsModu,                 # the DB service module
+  moduInit,                    # service module initializer
   servAddr  ='127.0.0.1',  # local addr to bind
   servPort  =3721,         # local port to bind
-  init      =None,         # peer module initialization
+  dbsModu   ='db/server',  # the DB service module
 ) {
   case Server (
-    dbsModu, servAddr, servPort, init=init,
+    dbsModu, servAddr, servPort, init=moduInit,
   ) of { dbs } -> { pass }
 
   # addrs() waits until listening succeeded or failed
-  case dbs.addrs() of { addrs } ->
-    console.info<| 'Serving DB at: ' ++ addrs
+  case dbs.addrs() of {
+    { addr =>_ } -> console.info<| 'Serving DB at: ' ++ addr
+    # or the network has failed, propagate the error
+    dbs.join()  # this usually throws
+    # in case join() didn't throw, report this error
+    error('DB server failed network listening.')
+  }
 
   # wait end-of-life for each client, log err if any
   go for peer from dbs.clients do { go {
@@ -34,4 +41,16 @@ export method dbOn (
   # scope
 
   return dbs
+}
+
+
+export method dbConsoleOn(
+  moduInit,                    # service module initializer
+  servAddr  ='127.0.0.1',  # local addr to bind
+  servPort  =3720,         # local port to bind
+  dbcsModu  ='db/ncs',     # the console entry module
+) {
+  consoleOn (
+    dbcsModu, servAddr, servPort, init=moduInit,
+  )
 }

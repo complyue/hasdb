@@ -1,8 +1,5 @@
 
 export { # re-export these imports
-  import * 'net'
-  import * 'net/ncs'
-
   import * 'db'
   import * 'db/machinery'
   import * 'db/server'
@@ -66,19 +63,17 @@ export class DbApp {
   # once this method returns, the db is shutdown.
   method run() {
 
+    # start the networked console
+    case dbConsoleOn(
+      this.__db_console_init__,     # service module initializer
+      this._conAddr, this._conPort, # network location to vend the console
+    ) of { ncon } -> { export this.ncon = ncon }
+
     # start the db service
     case dbOn(
-      'db/server',                     # the service entry module
+      this.__db_client_init__,         # service module initializer
       this._servAddr, this._servPort,  # network location to vend the service
-      init=this.__db_client_init__,    # per-connection peer module initialization
-    ) of { server } -> this.server = server
-
-    # start the networked console
-    case consoleOn(
-      'db/ncs',                       # the console entry module
-      this._conAddr, this._conPort,   # network location to vend the console
-      init=this.__db_console_init__,  # per-connection peer module initialization
-    ) of { ncon } -> this.ncon = ncon
+    ) of { server } -> { export this.server = server }
 
     # run the stdio console in a separate thread
     go {

@@ -1,0 +1,13 @@
+
+import * 'net/ncc'
+
+consoleTo( '127.0.0.1', 3720, )
+
+# stop the the db app from networked console
+shutdown
+
+# quit networked console of the db app
+quit
+
+# here back to the top level Edh repl, quit gracefully
+quit

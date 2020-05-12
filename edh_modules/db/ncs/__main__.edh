@@ -4,86 +4,72 @@
 import * 'net/options'
 import * 'db/options'
 
-console.info<| 'Console client connected - ' ++ peer
-defer {
-  console.info<| 'Console client disconnected - ' ++ peer
-}
-
-# `db` and `app` should have been implanted into this module,
+# `peer`, `db` and `app` should have been implanted into this module,
 # by per-connection peer module initialization method.
 
-# make those artifacts available from the app instance, esp. business
-# classes, directly available from here, so the client can reference
-# them by terse names, as in rpc commands it sends here.
-import (
-  # but some stuffs are not that interesting to the console client
-  bootstrap as _, run as _,
-  ncon as _,
-  **,  # the rest artifacts are all imported
-) app
+console.info<| 'Console client connected - ' ++ peer
 
+{
 
-# change console client's command prompt
-peer.p2c(
-  0, # direct to conin to change command prompt
-  repr( "(dbc)Đ: " )
-)
+  # make those artifacts available from the app instance, esp. business
+  # classes, directly available from here, so the client can reference
+  # them by terse names, as in rpc commands it sends here.
+  import * app
 
-while false == peer.eol() {  # this is the *Loop* in so-called REPL
-  # Read+Eval (peer.readCommand) -> Print (peer.print) -> Loop
+  # change console client's command prompt
+  peer.p2c(
+    0, # direct to conin to change command prompt
+    repr( "(dbc)Đ: " )
+  )
 
-  case peer.readCommand() of {
-    nil -> {  # conout an empty string or the console client will
-      # wait for its eval result forever
+  while false == peer.eol() {  # this is the *Loop* in so-called REPL
+    # Read+Eval (peer.readCommand) -> Print (peer.print) -> Loop
+
+    case peer.readCommand() of {
+      nil -> {  # conout an empty string or the console client will
+        # wait for its eval result forever
+        peer.p2c(
+          1, # direct to channel conout := 1
+          "''",
+        )
+      }
+      shutdown -> {
+        # shutdown the db app and commit its changes
+        server.stop()
+        peer.p2c(
+          1, # direct to channel conout := 1
+          "'DB shutdown issued.'",
+        )
+      }
+      batteries.quit -> { break }  # quit the networked db console
+      batteries.dir -> peer.p2c(
+        1, # direct to channel conout := 1
+        repr( sprintDir() ),
+      )
+      { cmdVal } -> {
+        peer.p2c(
+          1, # direct to channel conout := 1
+          repr( cmdVal ),
+        )
+        cmdVal = nil  # clear it
+      }
+    }
+
+  } $=> { cmdExc } -> {
+    if false == peer.eol() then {
+      peer.p2c(
+        2, # direct to channel conmsg := 2
+        repr( 'Recovered from error\n  exception=' ++ cmdExc),
+      )
       peer.p2c(
         1, # direct to channel conout := 1
         "''",
       )
     }
-    shutdown -> {
-      # shutdown the db app and commit its changes
-      server.stop()
-      peer.p2c(
-        1, # direct to channel conout := 1
-        "'DB shutdown issued.'",
-      )
-    }
-    batteries.quit -> { break }  # quit the networked db console
-    batteries.dir -> peer.p2c(
-      1, # direct to channel conout := 1
-      repr( sprintDir() ),
-    )
-    { cmdVal } -> {
-      peer.p2c(
-        1, # direct to channel conout := 1
-        repr( cmdVal ),
-      )
-      cmdVal = nil  # clear it
-    }
   }
 
-} $=> {  # catch exceptions
-
-  {{ ProgramHalt: ph }} -> {
-    throw ph  # escalate a halt to the program loop of the
-    # host interpreter, let it decide what to do.
-  }
-
-  {{ IOError:exc }} -> {
-    console.fatal <| 'IO error - ' ++ exc
-    throw exc  # escalate it to the program loop of the
-    # host interpreter, let it decide what to do.
-  }
-
-  { cmdExc } -> {
-    peer.p2c(
-      2, # direct to channel conmsg := 2
-      repr( 'Recovered from error\n  exception=' ++ cmdExc),
-    )
-    peer.p2c(
-      1, # direct to channel conout := 1
-      "''",
-    )
-  }
-
+} $=> { cmdExc } -> {  # catch & report errors, don't crash the server
+  console.error<| 'DB console client '++ peer ++ ' caused trouble:\n' ++ cmdExc
+} @=> {
+  console.info<| 'DB console client disconnected - ' ++ peer
 }

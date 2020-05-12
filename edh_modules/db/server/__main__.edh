@@ -26,8 +26,9 @@ import * app
     }
   }
 
-} @=> {  # do some logging in this finally block
+} $=> {  # catch & log errors caused by this client, don't crash the server
   { exc } -> console.error<| 'DB client ' ++ peer ++ ' caused some error:\n  '
      ++ exc
+} @=> {
   console.debug<| 'Done with db client - ' ++ peer
 }
