@@ -67,18 +67,13 @@ export method runApp (
       peer.p2c({$ chData $}, expr nil)
 
     } )
+  } @=> { dataExc } -> {
+    outlet <- nil  # mark end-of-stream on error, avoid stm deadlocks
   }
 
   for record from grabData(outlet=peer.armChannel(chData)) do {
     console.print('Got data: ' ++ record)
   }
-
-  peer.postCommand(expr
-    peer.p2c({$ conmsg $}, repr('Done.'))
-  )
-
-  # wait a tiny while, or server can encounter error: connection reset by peer
-  for _ from console.everyMillis(100) do { break }
 
   dbc.stop()
   dbc.join()  # rethrow any error encountered

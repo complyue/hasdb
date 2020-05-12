@@ -5,9 +5,6 @@
 # by per-connection peer module initialization method.
 
 console.debug<| 'Consuming DB service via: ' ++ peer
-defer {
-  console.info<| 'Done with DB service via: ' ++ peer
-}
 
 # channel 0 is named `conin` by convention, commands through it are
 # interpreted as command prompt change requests from the connected
@@ -31,21 +28,27 @@ perceive peer.armChannel( conmsg := 2 ) { conMsg } -> {
   console.info<| conMsg
 }
 
-{ while false == peer.eol() {
-  case peer.readCommand() of {
-    { cmdVal } -> {
-      console.info<| 'Unexpected peer command from DB service via: '
-        ++ peer ++ '\n  ' ++ cmdVal
+{
+
+  while false == peer.eol() {
+    case peer.readCommand() of {
+      { cmdVal } -> {
+        console.info<| 'Unexpected peer command from DB service via: '
+          ++ peer ++ '\n  ' ++ cmdVal
+      }
+      # note a command resulting in nil is normal, just pass by here
     }
-    # note a command resulting in nil is normal, just pass by here
   }
-} } @=> {
-  { exc } -> {
-    console.warn<| 'Error with DB service via: ' ++ peer
-      ++ '\n' ++ exc
+
+} @=> {
+  { dbcExc } -> {
+    console.warn<| 'Error with DB service via: ' ++ peer ++ ' ' ++ dbcExc
     fallthrough
   }
+
   peer.armedChannel(0) <- nil
   peer.armedChannel(1) <- nil
   peer.armedChannel(2) <- nil
+
+  console.info<| 'Done with DB service via: ' ++ peer
 }

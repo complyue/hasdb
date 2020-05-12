@@ -21,14 +21,14 @@ import * app
     # all db server commands are expected to return nil result,
     # and ignored here.
     { cmdVal } -> {
-      console.warn<| 'Unexpected server cmd result from ' ++ peer ++ '\n  '
-        ++ cmdVal
+      console.warn<| 'Unexpected server cmd result from ' ++ peer
+        ++ '\n  ' ++ cmdVal
     }
   }
 
-} $=> {  # catch & log errors caused by this client, don't crash the server
-  { exc } -> console.error<| 'DB client ' ++ peer ++ ' caused some error:\n  '
-     ++ exc
+} $=> { exc } -> {  # catch & log errors caused by this client,
+  # don't crash the server
+  console.error<| 'DB client ' ++ peer ++ ' caused some error: ' ++ exc
 } @=> {
   console.debug<| 'Done with db client - ' ++ peer
 }

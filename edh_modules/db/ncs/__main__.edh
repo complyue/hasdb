@@ -35,11 +35,11 @@ console.info<| 'Console client connected - ' ++ peer
       }
       shutdown -> {
         # shutdown the db app and commit its changes
-        server.stop()
         peer.p2c(
           1, # direct to channel conout := 1
-          "'DB shutdown issued.'",
+          "'Issuing DB shutdown ...'",
         )
+        server.stop()
       }
       batteries.quit -> { break }  # quit the networked db console
       batteries.dir -> peer.p2c(

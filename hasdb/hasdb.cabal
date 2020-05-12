@@ -93,7 +93,6 @@ library hasdb-internal
         unix -any,
         time -any,
         clock -any,
-        network -any,
         text -any,
         bytestring -any,
         mtl -any,

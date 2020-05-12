@@ -90,7 +90,7 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
 
     -- pump out file contents from another dedicated thread
     void $ forkIO $ receivePacketStream ("FD#" <> T.pack (show dfd))
-                                        fileHndl
+                                        (B.hGetSome fileHndl)
                                         pktSink
                                         eos
 
@@ -178,11 +178,12 @@ streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
                 let !pfPeer = T.pack wipPath
                     pumpIO  = atomically (takeTMVar persistSink) >>= \case
                       PersistRepr !txt -> do
-                        sendPacket pfPeer fileHndl $ textPacket "" txt
+                        sendPacket pfPeer (B.hPut fileHndl) $ textPacket "" txt
                         pumpIO -- keep pumping
                       PersistSync !dsyncSig !ssp -> do
                         -- write out the marker packet for system-sync-point
-                        sendPacket pfPeer fileHndl $ textPacket "ssp" ssp
+                        sendPacket pfPeer (B.hPut fileHndl)
+                          $ textPacket "ssp" ssp
                         -- flush handle buffer in case, even tho we issues 
                         --    `hSetBuffering fileHndl NoBuffering`
                         hFlush fileHndl
