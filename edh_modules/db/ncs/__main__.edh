@@ -7,7 +7,7 @@ import * 'db/options'
 # `peer`, `db` and `app` should have been implanted into this module,
 # by per-connection peer module initialization method.
 
-console.info<| 'Console client connected - ' ++ peer
+console.info<| 'DB console client connected - ' ++ peer
 
 {
 
@@ -34,11 +34,18 @@ console.info<| 'Console client connected - ' ++ peer
         )
       }
       shutdown -> {
-        # shutdown the db app and commit its changes
+        # ack the request
         peer.p2c(
           1, # direct to channel conout := 1
           "'Issuing DB shutdown ...'",
         )
+        # delay a bit for console client to see the msg
+        for _ from console.everyMillis(100) do { break }
+
+        # disconnect this console client
+        peer.stop()
+
+        # shutdown the db app and commit its changes
         server.stop()
       }
       batteries.quit -> { break }  # quit the networked db console
@@ -70,6 +77,6 @@ console.info<| 'Console client connected - ' ++ peer
 
 } $=> { cmdExc } -> {  # catch & report errors, don't crash the server
   console.error<| 'DB console client '++ peer ++ ' caused trouble:\n' ++ cmdExc
-} @=> {
-  console.info<| 'DB console client disconnected - ' ++ peer
 }
+
+console.info<| 'DB console client disconnected - ' ++ peer
