@@ -36,9 +36,9 @@ classNameProc (ArgsPack !args !kwargs) !exit = do
       (EdhArgsPack $ ArgsPack argsCls $ Map.map classNameOf kwargs)
  where
   classNameOf :: EdhValue -> EdhValue
-  classNameOf (EdhClass (ProcDefi _ _ (ProcDecl !cn _ _))) = EdhString cn
+  classNameOf (EdhClass (ProcDefi _ _ pd)) = EdhString $ procedureName pd
   classNameOf (EdhObject !obj) =
-    EdhString $ procedure'name $ procedure'decl $ objClass obj
+    EdhString $ procedureName $ procedure'decl $ objClass obj
   classNameOf _ = nil
 
 
@@ -62,7 +62,7 @@ newBoProc (ArgsPack !args !kwargs) !exit = case args of
                     EdhNil -> exitEdhSTM pgs exit $ EdhObject bo
                     EdhMethod !mth'proc ->
                       runEdhProc pgs
-                        $ callEdhMethod bo mth'proc (ArgsPack [] Map.empty)
+                        $ callEdhMethod bo mth'proc (ArgsPack [] Map.empty) id
                         $ \_ -> contEdhSTM $ exitEdhSTM pgs exit $ EdhObject bo
                     !badMth ->
                       throwEdhSTM pgs EvalError
