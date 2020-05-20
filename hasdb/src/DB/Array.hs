@@ -132,6 +132,14 @@ arrayFlatMVector
 arrayFlatMVector (DbArray (ArrayMeta _ !shape _) !fptr) =
   M.unsafeFromForeignPtr fptr 0 (dbArraySize shape)
 
+
+-- | unwrap an array from Edh object form
+unwrapArrayObject
+  :: forall e . (Typeable e) => Object -> STM (Maybe (DbArray e))
+unwrapArrayObject !ao =
+  fromDynamic <$> readTVar (entity'store $ objEntity ao)
+
+
 -- XXX this is called from 'unsafeIOToSTM', and retry prone, has to be solid
 --     reliable when rapidly retried with the result possibly discarded
 -- TODO battle test this impl.
