@@ -354,7 +354,7 @@ boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
   let !scope = contextScope $ edh'context pgsCtor
   parseIndexSpec pgsCtor ctorArgs $ \spec@(IndexSpec spec') -> do
     let specStr = T.pack $ show spec
-        idxName = case Map.lookup "name" ctorKwargs of
+        idxName = case Map.lookup (AttrByName "name") ctorKwargs of
           Nothing                 -> "<index>"
           Just (EdhString keyStr) -> keyStr
           Just v                  -> T.pack $ show v
@@ -567,7 +567,7 @@ buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
   let !scope = contextScope $ edh'context pgsCtor
   parseIndexSpec pgsCtor ctorArgs $ \spec@(IndexSpec spec') -> do
     let specStr = T.pack $ show spec
-        idxName = case Map.lookup "name" ctorKwargs of
+        idxName = case Map.lookup (AttrByName "name") ctorKwargs of
           Nothing                 -> "<unique-index>"
           Just (EdhString keyStr) -> keyStr
           Just v                  -> T.pack $ show v

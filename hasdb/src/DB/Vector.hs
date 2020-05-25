@@ -57,7 +57,7 @@ vecHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
              , (AttrByName "length"  , EdhDecimal $ fromIntegral $ V.length vec)
              ]
         ctorExit $ toDyn vec
-  case Map.lookup "length" ctorKwargs of
+  case Map.lookup (AttrByName "length") ctorKwargs of
     Nothing              -> doIt (-1) ctorArgs
     Just (EdhDecimal !d) -> case D.decimalToInteger d of
       Just len | len >= 0 -> doIt (fromInteger len) $ ctorArgs ++ repeat nil
