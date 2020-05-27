@@ -67,26 +67,22 @@ streamEdhReprFromDisk !ctx !restoreOutlet !dfd = if dfd < 0
             )
           $ \case
               -- propagate the error during restoration
-              Left  (Left  e)  -> throwEdhSTM pgs EvalError $ T.pack $ show e
+              Left  (Left  e)  -> throwEdh EvalError $ T.pack $ show e
               -- stopped, mark eos of the outlet and done
-              Left  (Right _)  -> publishEvent restoreOutlet nil
+              Left  (Right _)  -> contEdhSTM $ publishEvent restoreOutlet nil
               -- parse & eval evs to Edh value, then post to restoreOutlet 
               Right (dir, evs) -> case dir of
                 "" -> -- record repr
-                  runEdhProc pgs
-                    $ evalEdh "<edf>" evs
-                    $ \(OriginalValue evd _ _) -> contEdhSTM $ do
-                        publishEvent restoreOutlet evd
-                        restorePump pgs -- CPS recursion
+                      evalEdh "<edf>" evs $ \(OriginalValue evd _ _) ->
+                  contEdhSTM $ do
+                    publishEvent restoreOutlet evd
+                    restorePump pgs -- CPS recursion
                 "ssp" -> -- system sync point, just ignore here
                   -- todo maybe to provide an option to stop at certain ssp
                   --      here ? I'd think a separate utility to trim data
                   --      files purposefully is more proper.
-                  restorePump pgs -- CPS recursion
-                _ ->
-                  throwEdhSTM pgs UsageError
-                    $  "invalid packet directive: "
-                    <> dir
+                  contEdhSTM $ restorePump pgs -- CPS recursion
+                _ -> throwEdh UsageError $ "invalid packet directive: " <> dir
 
     -- pump out file contents from another dedicated thread
     void $ forkIO $ receivePacketStream ("FD#" <> T.pack (show dfd))
@@ -150,27 +146,29 @@ streamEdhReprToDisk !ctx !persitOutlet !dataFileFolder !sinkBaseDFD =
                 (subChan, _) <- atomically $ subscribeEvents persitOutlet
                 persistSink  <- newEmptyTMVarIO
                 let
+                  pumpEvd :: EdhProc
                   pumpEvd = do
                     pgs <- ask
-                    contEdhSTM $ waitEdhSTM pgs (readTChan subChan) $ \case
+                    contEdhSTM $ edhPerformSTM pgs (readTChan subChan) $ \case
                       -- end-of-stream reached
-                      EdhNil -> return ()
+                      EdhNil -> contEdhSTM $ return ()
                       -- system sync point issued
                       EdhPair (EdhSink !dsyncSig) (EdhString !ssp) ->
-                        waitEdhSTM
-                            pgs
-                            (  putTMVar persistSink (PersistSync dsyncSig ssp)
-                            >> return nil
-                            )
-                          $ \_ -> runEdhProc pgs pumpEvd -- keep pumping
+                        contEdhSTM
+                          $ edhPerformSTM
+                              pgs
+                              (  putTMVar persistSink (PersistSync dsyncSig ssp)
+                              >> return nil
+                              )
+                          $ \_ -> pumpEvd -- keep pumping
                       -- one persistent record
-                      !evd -> edhValueReprSTM pgs evd $ \evrs ->
-                        waitEdhSTM
+                      !evd -> contEdhSTM $ edhValueReprSTM pgs evd $ \evrs ->
+                        edhPerformSTM
                             pgs
                             (  putTMVar persistSink (PersistRepr evrs)
                             >> return nil
                             )
-                          $ \_ -> runEdhProc pgs pumpEvd -- keep pumping
+                          $ \_ -> pumpEvd -- keep pumping
                 void $ forkFinally (runEdhProgram' ctx pumpEvd) $ \case
                   Left (e :: SomeException) ->
                     atomically $ putTMVar persistSink $ PersistAbort e

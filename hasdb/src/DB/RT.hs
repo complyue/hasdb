@@ -93,7 +93,7 @@ streamToDiskProc (ArgsPack !args !kwargs) !exit = do
                                  (T.unpack dataFileFolder)
                                  sinkBaseDFD
             )
-        $ \_ -> exitEdhSTM pgs exit nil
+        $ \_ -> exitEdhProc exit nil
     _ -> throwEdh EvalError "Invalid arg to `streamToDisk`"
 
 
@@ -128,6 +128,6 @@ streamFromDiskProc (ArgsPack !args !kwargs) !exit = do
             $ fromIntegral
             $ D.castDecimalToInteger baseDFD
             )
-          $ \_ -> exitEdhSTM pgs exit nil
+          $ \_ -> exitEdhProc exit nil
       _ -> throwEdhSTM pgs EvalError "Invalid arg to `streamFromDisk`"
 
