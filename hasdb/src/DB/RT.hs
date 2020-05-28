@@ -78,23 +78,21 @@ newBoProc (ArgsPack !args !kwargs) !exit = case args of
 -- db shutdown, or other Edh threads will be terminated, including
 -- the one running the db app.
 streamToDiskProc :: EdhProcedure
-streamToDiskProc (ArgsPack !args !kwargs) !exit = do
-  pgs <- ask
-  case args of
-    [EdhSink !persistOutlet, EdhString !dataFileFolder, EdhSink !sinkBaseDFD]
-      | Map.null kwargs
-      -> contEdhSTM
-        $ edhPerformIO
-        -- not to use `unsafeIOToSTM` here, despite it being retry prone,
-        -- nested `atomically` is particularly prohibited.
-            pgs
-            (streamEdhReprToDisk (edh'context pgs)
-                                 persistOutlet
-                                 (T.unpack dataFileFolder)
-                                 sinkBaseDFD
-            )
-        $ \_ -> exitEdhProc exit nil
-    _ -> throwEdh EvalError "Invalid arg to `streamToDisk`"
+streamToDiskProc (ArgsPack [EdhSink !persistOutlet, EdhString !dataFileFolder, EdhSink !sinkBaseDFD] !kwargs) !exit
+  | Map.null kwargs
+  = ask >>= \pgs ->
+    contEdhSTM
+      $ edhPerformIO
+          -- not to use `unsafeIOToSTM` here, despite it being retry prone,
+          -- nested `atomically` is particularly prohibited.
+          pgs
+          (streamEdhReprToDisk (edh'context pgs)
+                               persistOutlet
+                               (T.unpack dataFileFolder)
+                               sinkBaseDFD
+          )
+      $ \_ -> exitEdhProc exit nil
+streamToDiskProc _ _ = throwEdh EvalError "Invalid arg to `streamToDisk`"
 
 
 -- | utility streamFromDisk(restoreOutlet, baseDFD)
