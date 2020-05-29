@@ -107,10 +107,16 @@ bosHostCtor !pgsCtor _ !obs !ctorExit = do
     case generatorCaller $ edh'context pgs of
       Nothing -> throwEdh UsageError "Can only be called as generator"
       Just (!pgs', !iter'cb) -> do
-        let yieldResults :: [Object] -> STM ()
-            yieldResults [] = exitEdhSTM pgs exit nil
-            yieldResults (bo : rest) =
-              runEdhProc pgs' $ iter'cb (EdhObject bo) $ \_ -> yieldResults rest
+        let
+          yieldResults :: [Object] -> STM ()
+          yieldResults [] = exitEdhSTM pgs exit nil
+          yieldResults (bo : rest) =
+            runEdhProc pgs' $ iter'cb (EdhObject bo) $ \case
+              Left (pgsThrower, exv) ->
+                edhThrowSTM pgsThrower { edh'context = edh'context pgs } exv
+              Right EdhBreak         -> exitEdhSTM pgs exit nil
+              Right (EdhReturn !rtn) -> exitEdhSTM pgs exit rtn
+              _                      -> yieldResults rest
         contEdhSTM $ do
           let this = thisObject $ contextScope $ edh'context pgs
               !es  = entity'store $ objEntity this
@@ -418,9 +424,10 @@ boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
             let tryAct !pgs' !exit' = reindexBusObj pgs' boi bo $ \boi' -> do
                   putTMVar boiVar boi'
                   exitEdhSTM pgs' exit' nil
-            edhCatchSTM pgs tryAct exit $ \_exv _recover rethrow -> do
-              void $ tryPutTMVar boiVar boi
-              rethrow
+            edhCatchSTM pgs tryAct exit $ \_pgsThrower _exv _recover rethrow ->
+              do
+                void $ tryPutTMVar boiVar boi
+                rethrow
     _ -> throwEdh UsageError "Invalid args to boiReindexProc"
 
   boiThrowAwayProc :: EdhProcedure
@@ -441,9 +448,10 @@ boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
             let tryAct !pgs' !exit' = throwAwayIdxObj pgs' boi bo $ \boi' -> do
                   putTMVar boiVar boi'
                   exitEdhSTM pgs' exit' nil
-            edhCatchSTM pgs tryAct exit $ \_exv _recover rethrow -> do
-              void $ tryPutTMVar boiVar boi
-              rethrow
+            edhCatchSTM pgs tryAct exit $ \_pgsThrower _exv _recover rethrow ->
+              do
+                void $ tryPutTMVar boiVar boi
+                rethrow
     _ -> throwEdh UsageError "Invalid args to boiThrowAwayProc"
 
   boiLookupProc :: EdhProcedure
@@ -485,7 +493,12 @@ boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
                   (EdhArgsPack
                     (ArgsPack [edhValueOfIndexKey ik, noneNil v] Map.empty)
                   )
-              $ \_ -> yieldResults rest
+              $ \case
+                  Left (pgsThrower, exv) ->
+                    edhThrowSTM pgsThrower { edh'context = edh'context pgs } exv
+                  Right EdhBreak         -> exitEdhSTM pgs exit nil
+                  Right (EdhReturn !rtn) -> exitEdhSTM pgs exit rtn
+                  _                      -> yieldResults rest
         case parseIdxRng apk of
           Left argsErr -> throwEdh UsageError $ argsErr <> " for boiGroupsProc"
           Right (minKey, maxKey) -> contEdhSTM $ do
@@ -639,9 +652,10 @@ buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
                   reindexUniqObj pgs' idxName bui bo $ \bui' -> do
                     putTMVar buiVar bui'
                     exitEdhSTM pgs' exit' nil
-            edhCatchSTM pgs tryAct exit $ \_exv _recover rethrow -> do
-              void $ tryPutTMVar buiVar bui
-              rethrow
+            edhCatchSTM pgs tryAct exit $ \_pgsThrower _exv _recover rethrow ->
+              do
+                void $ tryPutTMVar buiVar bui
+                rethrow
     _ -> throwEdh UsageError "Invalid args to buiReindexProc"
 
   buiThrowAwayProc :: EdhProcedure
@@ -663,9 +677,10 @@ buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
                   do
                     putTMVar buiVar bui'
                     exitEdhSTM pgs' exit' nil
-            edhCatchSTM pgs tryAct exit $ \_exv _recover rethrow -> do
-              void $ tryPutTMVar buiVar bui
-              rethrow
+            edhCatchSTM pgs tryAct exit $ \_pgsThrower _exv _recover rethrow ->
+              do
+                void $ tryPutTMVar buiVar bui
+                rethrow
     _ -> throwEdh UsageError "Invalid args to buiThrowAwayProc"
 
   buiLookupProc :: EdhProcedure
@@ -707,7 +722,12 @@ buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
                   (EdhArgsPack
                     (ArgsPack [edhValueOfIndexKey ik, noneNil v] Map.empty)
                   )
-              $ \_ -> yieldResults rest
+              $ \case
+                  Left (pgsThrower, exv) ->
+                    edhThrowSTM pgsThrower { edh'context = edh'context pgs } exv
+                  Right EdhBreak         -> exitEdhSTM pgs exit nil
+                  Right (EdhReturn !rtn) -> exitEdhSTM pgs exit rtn
+                  _                      -> yieldResults rest
         case parseIdxRng apk of
           Left argsErr -> throwEdh UsageError $ argsErr <> " for buiRangeProc"
           Right (minKey, maxKey) -> contEdhSTM $ do
