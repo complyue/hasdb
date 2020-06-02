@@ -63,7 +63,6 @@ executable hasdb
 library hasdb-internal
     exposed-modules:
         DB.RT
-        DB.Vector
         DB.Array
         DB.Array.MMap
         DB.Storage.InMem

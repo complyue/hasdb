@@ -1,7 +1,6 @@
 
 module DB.Batteries
   ( installDbBatteries
-  , EdhVector
   , module DB.Array
   )
 where
@@ -14,7 +13,6 @@ import           Control.Monad.Reader
 import qualified Data.HashMap.Strict           as Map
 
 import           DB.RT
-import           DB.Vector
 import           DB.Array
 import           DB.Storage.InMem
 
@@ -90,7 +88,7 @@ installDbBatteries !world = do
            ]
          ]
       ++ [ (nm, ) <$> mkHostClass moduScope nm True hc
-         | (nm, hc) <- [("Vector", vecHostCtor), ("DbArray", aryHostCtor)]
+         | (nm, hc) <- [("DbArray", aryHostCtor)]
          ]
 
     artsDict <- createEdhDict
