@@ -1,7 +1,7 @@
 
 # this is the peer module for network console of the db
 
-import * 'net/options'
+import * 'net'
 import * 'db/options'
 
 # `peer`, `db` and `app` should have been implanted into this module,

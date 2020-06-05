@@ -1,7 +1,7 @@
 
 # this is the peer module for network server of hasdb
 
-import * 'net/options'
+import * 'net'
 
 console.debug<| 'Serving db client - ' ++ peer
 
