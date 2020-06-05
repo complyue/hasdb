@@ -1,10 +1,33 @@
 
-# this is the peer module for client of hasdb
+{#
+ # hasdb client
+ #
+ # this is the server-facing entry module for client of hasdb
+ #}
 
-# `db` should have been implanted into this module,
-# by per-connection peer module initialization method.
+import (Peer, **_) 'net/RT'
+import * 'net/symbols'
+effect import * 'net/effects'
 
+import (Dbclient, **_) 'db/client'
+
+
+# a Peer object should have been implanted atomically, the following
+# line should have no practical effect but to hint an IDE for code
+# completion etc.
+peer ?:= Peer()
 console.debug<| 'Consuming DB service via: ' ++ peer
+
+# define various effectful artifacts used for communication with this
+# connected consumer client session, with `@netPeer` and `@dataSink` the
+# minimum by convention
+#
+# note in assignments to symbolic attributes, semicolon before `@` is likely
+# needed or the `@` may be parsed as an operator
+effect {
+  ;@netPeer = peer
+  ;@dataSink = peer.armChannel(dataChan)
+}
 
 # channel 0 is named `conin` by convention, commands through it are
 # interpreted as command prompt change requests from the connected
@@ -28,6 +51,22 @@ perceive peer.armChannel( conmsg := 2 ) { conMsg } -> {
   console.info<| conMsg
 }
 
+# channel 'err' is named `errChan` by convention, errors occurred on
+# one site are passed to its peer through this channel
+perceive peer.armChannel( errChan ?:= 'err' ) {
+  {{ PeerError: peerErr }} -> { throw peerErr }
+  { peerErrMsg } -> { throw PeerError( peerErrMsg ) }
+}
+
+
+# the DbClient instance named `db` should have been implanted into this module,
+# by per-connection peer module initialization method.
+db ?:= DbClient()
+# make the peer object available from dbc, but only after some preliminary
+# channels have been armed 
+db._peer <- peer
+
+
 {
 
   while false == peer.eol() {
@@ -46,6 +85,7 @@ perceive peer.armChannel( conmsg := 2 ) { conMsg } -> {
     fallthrough
   }
 
+  peer.armedChannel(dataChan) <- nil
   peer.armedChannel(0) <- nil
   peer.armedChannel(1) <- nil
   peer.armedChannel(2) <- nil

@@ -37,7 +37,6 @@ export class DbClient {
   }
 
   method __peer_init__() {
-    this._peer <- that.peer
     that.db = this
   }
 
