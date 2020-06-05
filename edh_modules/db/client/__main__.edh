@@ -9,14 +9,14 @@ import (Peer, **_) 'net/RT'
 import * 'net/symbols'
 effect import * 'net/effects'
 
-import (Dbclient, **_) 'db/client'
+import (DbClient, **_) 'db/client'
 
 
 # a Peer object should have been implanted atomically, the following
 # line should have no practical effect but to hint an IDE for code
 # completion etc.
 peer ?:= Peer()
-console.debug<| 'Consuming DB service via: ' ++ peer
+console.info<| 'Consuming DB service via: ' ++ peer
 
 # define various effectful artifacts used for communication with this
 # connected consumer client session, with `@netPeer` and `@dataSink` the
@@ -72,7 +72,7 @@ db._peer <- peer
   while false == peer.eol() {
     case peer.readCommand() of {
       { cmdVal } -> {
-        console.info<| 'Unexpected peer command from DB service via: '
+        console.warn<| 'Unexpected peer command from DB service via: '
           ++ peer ++ '\n  ' ++ cmdVal
       }
       # note a command resulting in nil is normal, just pass by here

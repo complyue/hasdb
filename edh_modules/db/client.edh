@@ -22,7 +22,7 @@ export class DbClient {
       init=this.__peer_init__,
     ) of { clnt } -> {
       go {  # clear the peer anyway after network disconnected
-        clnt.join() $=> this._peer <- nil
+        clnt.join() @=> this._peer <- None
       }
       # addrs() waits until the connection is made or failed
       case clnt.addrs() of {
