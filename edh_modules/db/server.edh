@@ -8,7 +8,7 @@ import * 'net/ncs'
 
 
 export method dbOn (
-  moduInit,                    # service module initializer
+  moduInit,                # service module initializer
   servAddr  ='127.0.0.1',  # local addr to bind
   servPort  =3721,         # local port to bind
   dbsModu   ='db/server',  # the DB service module

@@ -1,18 +1,56 @@
 
-# this is the peer module for network server of hasdb
+{#
+ # this is the client-facing entry module of hasdb service
+ # 
+ # this module is instantiated and run per client connection, the
+ # client is disconnected once this module finished running.
+ #}
 
-import * 'net'
+import (Peer, **_) 'net/RT'
+import * 'net/symbols'
+effect import * 'net/effects'
 
+import (DataBack, **_) 'db/machinery'
+
+
+# a Peer object should have been implanted atomically, the following
+# line should have no practical effect but to hint an IDE for code
+# completion etc.
+peer ?:= Peer()
 console.debug<| 'Serving db client - ' ++ peer
 
+
+# define various effectful artifacts used for communication with this
+# connected consumer client session, with `@netPeer` and `@dataSink` the
+# minimum by convention
+#
+# note in assignments to symbolic attributes, semicolon before `@` is likely
+# needed or the `@` may be parsed as an operator
+effect {
+  ;@netPeer = peer
+  ;@dataSink = peer.armChannel(dataChan ?:= 'data')
+}
+
+
 # `db` and `app` should have been implanted into this service module,
-# by per-connection peer module initialization method.
+# by per-connection peer module initialization method. the following
+# line should have no practical effect but to hint an IDE for code
+# completion etc.
+db ?:= DataBack()
+
 
 # make those artifacts available from the app instance, esp. business
 # classes, directly available from here, so the client can reference
 # them by terse names, as in rpc commands it sends here.
 import * app
 
+
+# channel 'err' is named `errChan` by convention, errors occurred on
+# one site are passed to its peer through this channel
+perceive peer.armChannel( errChan ?:= 'err' ) {
+  {{ PeerError: peerErr }} -> { throw peerErr }
+  { peerErrMsg } -> { throw PeerError( peerErrMsg ) }
+}
 
 {
 
