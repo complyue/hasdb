@@ -8,10 +8,10 @@ import * 'net/ncs'
 
 
 export method dbOn (
-  moduInit,                # service module initializer
-  servAddr  ='127.0.0.1',  # local addr to bind
-  servPort  =3721,         # local port to bind
-  dbsModu   ='db/server',  # the DB service module
+  moduInit, # service module initializer
+  servAddr = '127.0.0.1', # local addr to bind
+  servPort = 3721, # local port to bind
+  dbsModu = 'db/server', # the DB service module
 ) {
   case Server (
     dbsModu, servAddr, servPort, init=moduInit,
@@ -21,20 +21,20 @@ export method dbOn (
   case dbs.addrs() of {
     { addr =>_ } -> console.info<| 'Serving DB at: ' ++ addr
     # or the network has failed, propagate the error
-    dbs.join()  # this usually throws
+    dbs.join() # this usually throws
     # in case join() didn't throw, report this error
-    error('DB server failed network listening.')
+    error( 'DB server failed network listening.' )
   }
 
   # wait end-of-life for each client, log err if any
   go for peer from dbs.clients do { go {
-    method _ (peer') {
-      peer'.join() $=> { dbcExc } -> {
-        console.warn<| 'DB client caused trouble - '
+      method _ ( peer' ) {
+        peer'.join() $=> { dbcExc } -> {
+          console.warn<| 'DB client caused trouble - '
           ++ peer' ++ '\n' ++ dbcExc
+        }
       }
-    }
-  } (peer) }
+  } ( peer ) }
   # note an anoymous method is used above, to retain an attr
   # named `peer'`, locally in the procedure's scope, as the
   # loop will repeatedly change attr named `peer` in the outer
@@ -45,10 +45,10 @@ export method dbOn (
 
 
 export method dbConsoleOn(
-  moduInit,                    # service module initializer
-  servAddr  ='127.0.0.1',  # local addr to bind
-  servPort  =3720,         # local port to bind
-  dbcsModu  ='db/ncs',     # the console entry module
+  moduInit, # service module initializer
+  servAddr = '127.0.0.1', # local addr to bind
+  servPort = 3720, # local port to bind
+  dbcsModu = 'db/ncs', # the console entry module
 ) {
   consoleOn (
     dbcsModu, servAddr, servPort, init=moduInit,

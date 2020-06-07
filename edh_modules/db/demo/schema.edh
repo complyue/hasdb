@@ -11,18 +11,18 @@ import * 'db/machinery'
 export class DbLib {
 
   # requires an effective `DataBack` instance for each instance of this lib
-  method __init__ (db as this.db) {
+  method __init__ ( db as this.db ) {
 
     # create top-level indices wrt all business object classes provided by
     # this lib
     db.createIndex( expr deptByName, Depart, expr (
-      name:ASC,
+        name:ASC,
     ), unique=true )
     db.createIndex( expr personByName, Person, expr name:ASC )
 
   }
 
-  # a business object class, should `extends db.superBack()` from its 
+  # a business object class, should `extends db.superBack()` from its
   # `__init__()` method, for the business object instances of this class
   # to be persisted by the effective `DataBack`.
   #
@@ -38,7 +38,7 @@ export class DbLib {
   # construction, the `__init__()` method will NOT be called as in
   # normal construction after the class procedure is called against
   # the new instance. so as `extends db.superBack()` carries the
-  # persistent-object-creation semantic, it should be written in 
+  # persistent-object-creation semantic, it should be written in
   # the `__init__()` method instead of in the class procedure.
 
   {#
@@ -47,11 +47,11 @@ export class DbLib {
   export class Person {
 
     method __init__(
-      name as this.name, 
-      age as this.age, 
+      name as this.name,
+      age as this.age,
     ) extends db.superBack()
 
-    # invoked on initial creation of this persistent business object, or 
+    # invoked on initial creation of this persistent business object, or
     # during history replay from backing storage.
     method __db_init__ () {
 
@@ -72,7 +72,7 @@ export class DbLib {
      # only more efficient under graph traversal usages.
      #
      # all node objects are always in memory, given sufficient physical
-     # RAM deployed for the graph data. they are inter-connected by 
+     # RAM deployed for the graph data. they are inter-connected by
      # vanilla reference from a relationship object to its referees, or
      # by kin index/set from a referee to its referers.
      #
@@ -82,7 +82,7 @@ export class DbLib {
      #
      # it can naturally be nested inside bigger ai marked blocks for bigger
      # transactions if that's appropriate.
-     # 
+     #
      # and STM will automatically atomically retry this procedure as part of
      # an inconsistent attempt of a transaction, until the whole transaction
      # is finally processed in a consistent manner.
@@ -110,7 +110,7 @@ export class DbLib {
       name as this.name,
     ) extends db.superBack()
 
-    # invoked on initial creation of this persistent business object, or 
+    # invoked on initial creation of this persistent business object, or
     # during history replay from backing storage.
     method __db_init__ () {
 
@@ -132,14 +132,14 @@ export class DbLib {
     method headcount () ai {
       hc = 0
       for workFor from super.workers.all() do
-        hc += 1
+      hc += 1
       return hc
     }
 
     method expenses () ai {
       amt = 0
-      for workFor from super.workers.all() do 
-        amt += workFor.salary
+      for workFor from super.workers.all() do
+      amt += workFor.salary
       return amt
     }
 
@@ -153,10 +153,9 @@ export class DbLib {
    # A relationship business class
    #}
   export class WorkFor { method __init__(
-    person as this.person,
-    depart as this.depart,
-    salary as this.salary,
+      person as this.person,
+      depart as this.depart,
+      salary as this.salary,
   ) extends db.superBack() }
 
 }
-

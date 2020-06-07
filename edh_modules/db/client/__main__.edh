@@ -5,11 +5,11 @@
  # this is the server-facing entry module for client of hasdb
  #}
 
-import (Peer, **_) 'net/RT'
+import ( Peer, **_ ) 'net/RT'
 import * 'net/symbols'
 effect import * 'net/effects'
 
-import (DbClient, **_) 'db/client'
+import ( DbClient, **_ ) 'db/client'
 
 
 # a Peer object should have been implanted atomically, the following
@@ -25,8 +25,8 @@ console.info<| 'Consuming DB service via: ' ++ peer
 # note in assignments to symbolic attributes, semicolon before `@` is likely
 # needed or the `@` may be parsed as an operator
 effect {
-  ;@netPeer = peer
-  ;@dataSink = peer.armChannel(dataChan)
+  ; @netPeer = peer
+  ; @dataSink = peer.armChannel( dataChan )
 }
 
 # channel 0 is named `conin` by convention, commands through it are
@@ -39,7 +39,7 @@ perceive peer.armChannel( conin := 0 ) {
 # channel 1 is named `conout` by convention, commands through it are
 # directed to `console.print()`
 perceive peer.armChannel( conout := 1 ) { conOut } -> {
-  ;| ArgsPackType == type(conOut) -> {
+  ; | ArgsPackType == type( conOut ) -> {
     console.print( ***conOut )
   }
   console.print( conOut )
@@ -54,7 +54,7 @@ perceive peer.armChannel( conmsg := 2 ) { conMsg } -> {
 # channel 'err' is named `errChan` by convention, errors occurred on
 # one site are passed to its peer through this channel
 perceive peer.armChannel( errChan ?:= 'err' ) {
-  {{ PeerError: peerErr }} -> { throw peerErr }
+  { { PeerError: peerErr } } -> { throw peerErr }
   { peerErrMsg } -> { throw PeerError( peerErrMsg ) }
 }
 
@@ -63,7 +63,7 @@ perceive peer.armChannel( errChan ?:= 'err' ) {
 # by per-connection peer module initialization method.
 db ?:= DbClient()
 # make the peer object available from dbc, but only after some preliminary
-# channels have been armed 
+# channels have been armed
 db._peer <- peer
 
 
@@ -73,7 +73,7 @@ db._peer <- peer
     case peer.readCommand() of {
       { cmdVal } -> {
         console.warn<| 'Unexpected peer command from DB service via: '
-          ++ peer ++ '\n  ' ++ cmdVal
+        ++ peer ++ '\n  ' ++ cmdVal
       }
       # note a command resulting in nil is normal, just pass by here
     }
@@ -85,10 +85,10 @@ db._peer <- peer
     fallthrough
   }
 
-  peer.armedChannel(dataChan) <- nil
-  peer.armedChannel(0) <- nil
-  peer.armedChannel(1) <- nil
-  peer.armedChannel(2) <- nil
+  peer.armedChannel( dataChan ) <- nil
+  peer.armedChannel( 0 ) <- nil
+  peer.armedChannel( 1 ) <- nil
+  peer.armedChannel( 2 ) <- nil
 
   console.info<| 'Done with DB service via: ' ++ peer
 }

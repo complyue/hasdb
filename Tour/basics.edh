@@ -10,7 +10,7 @@ jims
 
 {
   debug&>{
-    # destruct something with something left, for each run 
+    # destruct something with something left, for each run
     # to change some thing
     compl.delete()
     dev.delete()
@@ -23,10 +23,10 @@ jims
    #       shall Edh have one or more narrower catch operator,
    #       maybe (!=>) (%=>) etc. to be used for convenience
    #       like below, similar to Pythonic idiom:
-      try:
-        jim.version += 1
-      except TypeError:
-        jim.version = 1
+  >>> try:
+  >>>   jim.version += 1
+  >>> except TypeError:
+  >>>   jim.version = 1
    #}
   jim.version += 1 $=> jim.version = 1
 }

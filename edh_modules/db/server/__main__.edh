@@ -1,16 +1,16 @@
 
 {#
  # this is the client-facing entry module of hasdb service
- # 
+ #
  # this module is instantiated and run per client connection, the
  # client is disconnected once this module finished running.
  #}
 
-import (Peer, **_) 'net/RT'
+import ( Peer, **_ ) 'net/RT'
 import * 'net/symbols'
 effect import * 'net/effects'
 
-import (DataBack, **_) 'db/machinery'
+import ( DataBack, **_ ) 'db/machinery'
 
 
 # a Peer object should have been implanted atomically, the following
@@ -27,8 +27,8 @@ console.debug<| 'Serving db client - ' ++ peer
 # note in assignments to symbolic attributes, semicolon before `@` is likely
 # needed or the `@` may be parsed as an operator
 effect {
-  ;@netPeer = peer
-  ;@dataSink = peer.armChannel(dataChan ?:= 'data')
+  ; @netPeer = peer
+  ; @dataSink = peer.armChannel( dataChan ?:= 'data' )
 }
 
 
@@ -48,7 +48,7 @@ import * app
 # channel 'err' is named `errChan` by convention, errors occurred on
 # one site are passed to its peer through this channel
 perceive peer.armChannel( errChan ?:= 'err' ) {
-  {{ PeerError: peerErr }} -> { throw peerErr }
+  { { PeerError: peerErr } } -> { throw peerErr }
   { peerErrMsg } -> { throw PeerError( peerErrMsg ) }
 }
 
@@ -60,11 +60,11 @@ perceive peer.armChannel( errChan ?:= 'err' ) {
     # and ignored here.
     { cmdVal } -> {
       console.warn<| 'Unexpected server cmd result from ' ++ peer
-        ++ '\n  ' ++ cmdVal
+      ++ '\n  ' ++ cmdVal
     }
   }
 
-} $=> { exc } -> {  # catch & log errors caused by this client,
+} $=> { exc } -> { # catch & log errors caused by this client,
   # don't crash the server
   console.error<| 'DB client ' ++ peer ++ ' caused some error: ' ++ exc
 } @=> {

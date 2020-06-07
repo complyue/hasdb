@@ -2,7 +2,7 @@
 import * 'net'
 import (
   DbArray,
-  **_  # consume (drop) extra artifacts exported there, don't fail
+  **_ # consume (drop) extra artifacts exported there, don't fail
 ) 'db/RT'
 
 
@@ -11,25 +11,25 @@ export class DbClient {
   _peer = sink
 
   method __init__ (
-    dataDir   as this.dataDir,
-    addr      ='127.0.0.1', # db server addr to connect
-    port      =3721,        # db server port to connect
-    consumer  ='db/client',   # the peer module
+    dataDir as this.dataDir,
+    addr = '127.0.0.1', # db server addr to connect
+    port = 3721, # db server port to connect
+    consumer = 'db/client', # the peer module
   ) {
     case Client(
       consumer,
       addr, port,
       init=this.__peer_init__,
     ) of { clnt } -> {
-      go {  # clear the peer anyway after network disconnected
+      go { # clear the peer anyway after network disconnected
         clnt.join() @=> this._peer <- None
       }
       # addrs() waits until the connection is made or failed
       case clnt.addrs() of {
         { addr => _ } -> console.info<| 'Connected to DB via: ' ++ addr
-        clnt.join()  # connection has failed, propagate the error
+        clnt.join() # connection has failed, propagate the error
         # in case clnt.join() didn't throw, though unlikely
-        error('Can not connect to db.')
+        error( 'Can not connect to db.' )
       }
       # to inherit eol()/join()/stop() etc.
       extends clnt
@@ -41,10 +41,10 @@ export class DbClient {
   }
 
   # this waits until the peer is initialized then return it
-  method peer() latestEvent(this._peer)
+  method peer() latestEvent( this._peer )
 
   # this makes `db.Array(...)` eval right at the client site
-  method Array (***apk) {
+  method Array ( ***apk ) {
     DbArray( this.dataDir, ***apk )
   }
 

@@ -45,31 +45,31 @@ export class DbApp {
    shutting down first, will leave your changes uncommitted.
 '''
     while true {
-      case console.readCommand(ps1="(app)Đ: ", ps2="Đ| ") of {
+      case console.readCommand( ps1= "(app)Đ: ", ps2= "Đ| " ) of {
         shutdown -> { break }
-        batteries.quit -> {  # the builtin `quit` command
+        batteries.quit -> { # the builtin `quit` command
           console.print(
-            "You don't quit a db app console, use `shutdown` instead." )
+          "You don't quit a db app console, use `shutdown` instead." )
         }
-        batteries.dir -> {  # custom response to the builtin `dir` command
+        batteries.dir -> { # custom response to the builtin `dir` command
           printDir()
           # ...
         }
         { cmdVal } -> {
           console.print( cmdVal )
-          cmdVal = nil  # clear it
+          cmdVal = nil # clear it
         }
       }
-    } $=> {  # catch exceptions
+    } $=> { # catch exceptions
 
-      {{ ProgramHalt:_ }} -> {
-        rethrow  # escalate a halt to the program loop of the
+      { { ProgramHalt:_ } } -> {
+        rethrow # escalate a halt to the program loop of the
         # host interpreter, let it decide what to do.
       }
 
-      {{ IOError:exc }} -> {
+      { { IOError:exc } } -> {
         console.fatal <| 'IO error - ' ++ exc
-        rethrow  # escalate it to the program loop of the
+        rethrow # escalate it to the program loop of the
         # host interpreter, let it decide what to do.
       }
 
@@ -83,4 +83,3 @@ export class DbApp {
 
   }
 }
-

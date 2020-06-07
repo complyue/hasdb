@@ -1,5 +1,5 @@
 
-export {  # re-export these imports, so launcher scripts can be terse
+export { # re-export these imports, so launcher scripts can be terse
   import * 'db'
   import * 'db/machinery'
   import * 'db/server'
@@ -13,8 +13,8 @@ export class DbApp {
   method __init__ (
     servAddr as this._servAddr = '127.0.0.1',
     servPort as this._servPort = 3721,
-    conAddr  as this._conAddr  = '127.0.0.1',
-    conPort  as this._conPort  = 3720,
+    conAddr as this._conAddr = '127.0.0.1',
+    conPort as this._conPort = 3720,
   ) pass
 
   method __db_console_init__ () {
@@ -65,14 +65,14 @@ export class DbApp {
 
     # start the networked console
     case dbConsoleOn(
-      this.__db_console_init__,     # service module initializer
+      this.__db_console_init__, # service module initializer
       this._conAddr, this._conPort, # network location to vend the console
     ) of { ncon } -> { export this.ncon = ncon }
 
     # start the db service
     case dbOn(
-      this.__db_client_init__,         # service module initializer
-      this._servAddr, this._servPort,  # network location to vend the service
+      this.__db_client_init__, # service module initializer
+      this._servAddr, this._servPort, # network location to vend the service
     ) of { server } -> { export this.server = server }
 
     # run the stdio console in a separate thread
@@ -83,7 +83,7 @@ export class DbApp {
    shutting down first, will leave your changes uncommitted.
 '''
       while false == server.eol() {
-        case console.readCommand(ps1="(dbs)Đ: ", ps2="Đ| ") of {
+        case console.readCommand( ps1= "(dbs)Đ: ", ps2= "Đ| " ) of {
           shutdown -> {
             # shutdown the db app and commit its changes
             server.stop()
@@ -95,28 +95,28 @@ export class DbApp {
    is available for now.
  * You can only return to the db top-level repl after the app is shutdown,
    probably from a networked console.
-''' )
+            ''' )
             break
           }
-          batteries.dir -> {  # custom response to the builtin `dir` command
+          batteries.dir -> { # custom response to the builtin `dir` command
             printDir()
             # ...
           }
           { cmdVal } -> {
             console.print( cmdVal )
-            cmdVal = nil  # clear it
+            cmdVal = nil # clear it
           }
         }
-      } $=> {  # catch exceptions
+      } $=> { # catch exceptions
 
-        {{ ProgramHalt:_ }} -> {
-          rethrow  # escalate a halt to the program loop of the
+        { { ProgramHalt:_ } } -> {
+          rethrow # escalate a halt to the program loop of the
           # host interpreter, let it decide what to do.
         }
 
-        {{ IOError:exc }} -> {
+        { { IOError:exc } } -> {
           console.fatal <| 'IO error - ' ++ exc
-          rethrow  # escalate it to the program loop of the
+          rethrow # escalate it to the program loop of the
           # host interpreter, let it decide what to do.
         }
 
@@ -133,7 +133,7 @@ export class DbApp {
       # console or networked console
       server.join()
 
-    } @=> {  # stop the network service anyway before db app shutdown
+    } @=> { # stop the network service anyway before db app shutdown
 
       console.info<| 'DB app shutting down ...'
 
@@ -147,4 +147,3 @@ export class DbApp {
     }
   }
 }
-

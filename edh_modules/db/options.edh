@@ -1,7 +1,7 @@
 
 export {
 
-# common commands a db app should support
-shutdown := Command()
+  # common commands a db app should support
+  shutdown := Command()
 
 }

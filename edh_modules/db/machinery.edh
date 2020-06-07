@@ -6,7 +6,7 @@
 # re-export these
 export import (
   className,
-  **_,  # consume (drop) extra artifacts exported there, don't fail
+  **_, # consume (drop) extra artifacts exported there, don't fail
 ) 'db/RT'
 
 # don't re-export these
@@ -15,7 +15,7 @@ import (
   newBo,
   streamToDisk,
   streamFromDisk,
-  **_,  # consume (drop) extra artifacts exported there, don't fail
+  **_, # consume (drop) extra artifacts exported there, don't fail
 ) 'db/RT'
 
 import (
@@ -23,7 +23,7 @@ import (
   BoSet as _BoSet,
   BoIndex as _BoIndex,
   BuIndex as _BuIndex,
-  **_,  # consume (drop) extra artifacts exported there, don't fail
+  **_, # consume (drop) extra artifacts exported there, don't fail
 ) 'db/Storage/InMem'
 
 # duck-typed KinColection, abstracting concrete implementations:
@@ -33,15 +33,15 @@ import (
 export class KinCollection {
 
   # to enumerate all relatipnship business objects one by one
-  generator all() error('abstract method')
+  generator all() error( 'abstract method' )
 
   # to enumerate all relationship business objects group by group,
   # together with the index key attributes, in order of the index.
-  generator groups() error('abstract method')
+  generator groups() error( 'abstract method' )
 
   # to enumerate all relationship business objects one by one,
   # together with the index key attributes, in order of the index.
-  generator range() error('abstract method')
+  generator range() error( 'abstract method' )
 
 }
 
@@ -51,7 +51,7 @@ export class BoSet {
 
   # to satisfy the duck typing criteria
   generator groups() {
-    for bo from super.all() do yield pkargs( (), (bo,) )
+    for bo from super.all() do yield pkargs( (), ( bo, ) )
   }
   generator range() {
     for bo from super.all() do yield pkargs( (), bo )
@@ -60,7 +60,7 @@ export class BoSet {
 
 export class BoIndex {
   # pass verbatim ctor args to the super host class
-  method __init__(***apk) extends _BoIndex(***apk)
+  method __init__( ***apk ) extends _BoIndex( ***apk )
 
   # to satisfy the duck typing criteria
   generator all() {
@@ -77,7 +77,7 @@ export class BoIndex {
 
 export class BuIndex {
   # pass verbatim ctor args to the super host class
-  method __init__(***apk) extends _BuIndex(***apk)
+  method __init__( ***apk ) extends _BuIndex( ***apk )
 
   # to satisfy the duck typing criteria
   generator all() {
@@ -87,27 +87,27 @@ export class BuIndex {
   }
   generator groups() {
     for ( k, bo ) from super.range() do {
-      yield pkargs( k, (bo,) )
+      yield pkargs( k, ( bo, ) )
     }
   }
 }
 
 # this tells persistent attributes from transient ones
 method hasReConRepr( attrVal ) case attrVal of {
-  {{ DbArray: _ }} -> true;
-  {{ Vector: _ }} -> true;
-  ;| type( attrVal ) ?<= [
+  { { DbArray: _ } } -> true;
+  { { Vector: _ } } -> true;
+  ; | type( attrVal ) ?<= [
     # types reconstructable from its textual representation
-    nil,  # absent attribute
-    BoolType, DecimalType, StringType,  # literal values
+    nil, # absent attribute
+    BoolType, DecimalType, StringType, # literal values
     # TODO validate deep content in a container are reconstructable from repr
-    PairType, TupleType, ListType, DictType,  # containers
-    ArgsPackType,  # complexer container
+    PairType, TupleType, ListType, DictType, # containers
+    ArgsPackType, # complexer container
   ] -> true
   false
 }
 
-export method runDbApp(dataDir, dbApp) {
+export method runDbApp( dataDir, dbApp ) {
 
   # the persister will post the fd it opened as the latest data file
   # to this sink, it'll hold this fd open until it finalized a new data
@@ -128,17 +128,17 @@ export method runDbApp(dataDir, dbApp) {
     # and we will be able to see details of the error spat out.
     defer { outlet <- nil }
 
-{#
-debug&>{go{
-  for pr from outlet do {  # dump persistence payload
+    {#
+    debug&>{go{
+    for pr from outlet do {  # dump persistence payload
     console.debug <| 'persistOutlet REC\n' ++ pr
-  }
-  console.debug <| 'persistOutlet EOS'
-}}
-#}
+    }
+    console.debug <| 'persistOutlet EOS'
+    }}
+     #}
 
     # read the most recent event from the sink, it must have been there already,
-    # as `_streamToDisk()` won't subscribe to the persist outlet (only after 
+    # as `_streamToDisk()` won't subscribe to the persist outlet (only after
     # which this producer proc will run) until it resolved the latest data file.
     db.init( outlet, mre( sinkBaseDFD ) )
 
@@ -158,8 +158,8 @@ class DataBackLifecycle {
 
   # this is the entry point of a db app, the concrete app can selectively
   # override some of the methods invoked here.
-  method init( 
-    persistOutlet as that.persistOutlet,  # put it to db instance
+  method init(
+    persistOutlet as that.persistOutlet, # put it to db instance
     baseDFD,
   ) {
     # note `that` reference won't invoke magics, just does vanilla
@@ -175,7 +175,7 @@ class DataBackLifecycle {
 
     that._dumpBaseData()
 
-    # TODO take this chance to physically discard older files in the data 
+    # TODO take this chance to physically discard older files in the data
     #      folder, as a means of automatic compacting of backing storage.
 
     that.run()
@@ -187,7 +187,7 @@ class DataBackLifecycle {
   # have to impl. all of them.
 
   method bootstrap() pass
-  
+
   method run() pass
 
   method shutdown() {
@@ -211,7 +211,7 @@ export class DataBack {
     extends( dbApp )
   }
 
-  method Array (***apk) {
+  method Array ( ***apk ) {
     DbArray( this.dataDir, ***apk )
   }
 
@@ -224,12 +224,12 @@ export class DataBack {
   # we mark it with `ai` for extra certain.
   method createIndex( idxAttr, boClass, indexSpec, unique=false ) ai {
     idx = if unique
-      then BuIndex( indexSpec, name=''++idxAttr++'@'++boClass )
-      else BoIndex( indexSpec, name=''++idxAttr++'@'++boClass )
-    bocIndices = this._indices[boClass] |>    (
-                 this._indices[boClass] = {} )
+    then BuIndex( indexSpec, name= '' ++idxAttr++ '@' ++boClass )
+    else BoIndex( indexSpec, name= '' ++idxAttr++ '@' ++boClass )
+    bocIndices = this._indices[ boClass ] |> (
+    this._indices[ boClass ] = {} )
     for keyAttr from idx.keys do idx => (
-      bocIndices[ keyAttr ] |>   (
+      bocIndices[ keyAttr ] |> (
       bocIndices[ keyAttr ] = [] )
     )
     this$idxAttr = idx
@@ -241,7 +241,7 @@ export class DataBack {
   #      trivial natural numbers as for now
   _last_eid = 0
 
-  # reference all live business objects by eid, with each business 
+  # reference all live business objects by eid, with each business
   # class having a separate dict in `_extents`
   _extents = {}
 
@@ -256,114 +256,113 @@ export class DataBack {
   # settle a new business object
   # in a tx process all attributes atm
   method _settle_obj( bo, sb ) ai {
-    boClass = constructor(bo)
+    boClass = constructor( bo )
     bocIndices = this._indices[ boClass ] |> None
-    touchedIndices = {}  # collect touched global indices by attr
+    touchedIndices = {} # collect touched global indices by attr
     persistAttrs = []
-    for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
+    for ( attrKey, attrVal ) from sb._boScope.attrs() do case attrVal of {
       # referencing another business object, settle the relationship
-      {{ SuperBack: sbRef }} ->  {
+      { { SuperBack: sbRef } } -> {
         this._settle_rel( bo, sb, attrKey, attrVal, sbRef )
 
         # encounter the new relationship
-        ;( attrKey, className(attrVal), sbRef.eid ) => persistAttrs
+        ; ( attrKey, className( attrVal ), sbRef.eid ) => persistAttrs
       }
       # handle trivially representable values, including `nil`
-      ;| hasReConRepr(attrVal) -> {
+      ; | hasReConRepr( attrVal ) -> {
         # encounter touched index by this attr
         case bocIndices &> bocIndices[ attrKey ] |> nil of { bois } -> {
           for boi from bois do
-            touchedIndices[ boi ] = true
+          touchedIndices[ boi ] = true
         }
 
         # encounter the new attribute value
-        ;( attrKey, attrVal ) => persistAttrs
+        ; ( attrKey, attrVal ) => persistAttrs
       }
       # not to persist, treating as a transient attribute
       {#
       console.debug<| 'attribute of type ' ++ type(attrVal)
-        ++ ' treated as transient attribute ' ++ attrKey 
-        ++ ' for business object ' ++ sb.eid
-        ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
-      #}
+      ++ ' treated as transient attribute ' ++ attrKey
+      ++ ' for business object ' ++ sb.eid
+      ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
+       #}
     }
 
     # put into global extent
-    case this._extents[boClass] of {
-      nil -> this._extents[boClass] = {
+    case this._extents[ boClass ] of {
+      nil -> this._extents[ boClass ] = {
         sb.eid: bo
       }
       { boExtent } -> {
-        boExtent[sb.eid] = bo
+        boExtent[ sb.eid ] = bo
       }
     }
 
     # index into all touched global indices
-    for (boi, _) from touchedIndices do boi.(<-)(bo)
+    for ( boi, _ ) from touchedIndices do boi.(<-) ( bo )
 
     if this._dump_version >= 0 then {
       # persist all attributes of the new business object
-      this.persistOutlet <- (className(bo), sb.eid, persistAttrs)
+      this.persistOutlet <- ( className( bo ), sb.eid, persistAttrs )
     }
   }
 
   # settle an attribute update
   method _settle_attr( bo, sb, attrKey, attrVal ) case attrVal of {
     # referencing another business object, settle the relationship
-    {{ SuperBack: sbRef }} ->  {
+    { { SuperBack: sbRef } } -> {
       this._settle_rel( bo, sb, attrKey, attrVal, sbRef )
     }
 
     # handle trivially representable values, including `nil`
-    ;| hasReConRepr(attrVal) -> {
+    ; | hasReConRepr( attrVal ) -> {
       # re-index to the global index if any touched
-      case this._indices[ constructor(bo) ] of { bocIndices } -> {
+      case this._indices[ constructor( bo ) ] of { bocIndices } -> {
         case bocIndices[ attrKey ] of { bois } -> {
-          for boi from bois do
-            boi.(<-)(bo)
+          for boi from bois do boi.(<-) ( bo )
         }
       }
 
       if this._dump_version >= 0 then {
         # persist the new attribute value
-        this.persistOutlet <- (className(bo), sb.eid, [
-          (attrKey, attrVal)
-        ])
+          this.persistOutlet <- ( className( bo ), sb.eid, [
+            ( attrKey, attrVal )
+        ] )
       }
     }
 
     # not to persist, treating as a transient attribute
     {#
     console.debug<| 'attribute of type ' ++ type(attrVal)
-      ++ ' treated as transient attribute ' ++ attrKey 
-      ++ ' for business object ' ++ sb.eid
-      ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
-    #}
+    ++ ' treated as transient attribute ' ++ attrKey
+    ++ ' for business object ' ++ sb.eid
+    ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
+     #}
   }
 
   # settle a new relationship
   method _settle_rel( boRel, sbRel, refAttr, bo, sb ) {
 
-#;-1<| Exception('settle rel ' ++ className(boRel) ++ ' # ' ++ sbRel.eid)
-#shellHere()
+    #;-1<| Exception('settle rel ' ++ className(boRel) ++ ' # ' ++ sbRel.eid)
+    #shellHere()
 
     # update reverse reference on the referee sb's kin index/set if any
-    case sb._kins[ constructor(boRel):(''++refAttr) ] of { kin } -> {
-      kin.(<-)(boRel)
+    case sb._kins[ constructor( boRel ) : repr( refAttr ) ] of { kin } -> {
+      kin.(<-) ( boRel )
     }
     if this._dump_version >= 0 then {
       # persist the new relationship
-      this.persistOutlet <- (className(boRel), sbRel.eid, [
-        (refAttr, className(bo), sb.eid)
-      ])
+        this.persistOutlet <- ( className( boRel ), sbRel.eid, [
+          ( refAttr, className( bo ), sb.eid )
+      ] )
     }
   }
 
   # cleanup an old relationship
   method _cleanup_rel( boRel, sbRel, refAttr, boOld, sbOld ) {
     # throw away reverse reference on the referee sb's kin index/set if any
-    case sbOld._kins[ constructor(boRel):(''++refAttr) ] of { kin } -> {
-      kin.(^*)(boRel)
+    case sbOld._kins[ constructor( boRel ) : repr( refAttr ) ] of { kin } -> {
+      kin.(^*) ( boRel )
     }
   }
 
@@ -374,48 +373,48 @@ export class DataBack {
     # mark a new dump by increasing the version
     this._dump_version += 1
 
-console.debug<| 'starting dump version ' ++ this._dump_version
+    console.debug<| 'starting dump version ' ++ this._dump_version
 
     method _dumpBo( bo, sb ) {
       if sb?_dumped_version == this._dump_version then {
-        return nil  # this bo already dumped to version
+        return nil # this bo already dumped to version
       }
 
-console.debug<| 'persist dump '++className(bo)++' # '++sb.eid
+      console.debug<| 'persist dump ' ++ className( bo ) ++ ' # ' ++ sb.eid
 
       persistAttrs = []
-      for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
+      for ( attrKey, attrVal ) from sb._boScope.attrs() do case attrVal of {
         # referencing another business object
-        {{ SuperBack: sbRef }} ->  {
+        { { SuperBack: sbRef } } -> {
           # dump the referee now to ensure it'll be restored before this bo
           # being restored, in future replays of history
           _dumpBo( attrVal, sbRef )
           # record this ref attr
-          ;( attrKey, className(attrVal), sbRef.eid ) => persistAttrs
+          ; ( attrKey, className( attrVal ), sbRef.eid ) => persistAttrs
         }
         # handle trivially representable values, including `nil`
-        ;| hasReConRepr(attrVal) -> {
+        ; | hasReConRepr( attrVal ) -> {
           # encounter the new attribute value
-          ;( attrKey, attrVal ) => persistAttrs
+          ; ( attrKey, attrVal ) => persistAttrs
         }
         # not to persist, treating as a transient attribute
         {#
         console.debug<| 'attribute of type ' ++ type(attrVal)
-          ++ ' treated as transient attribute ' ++ attrKey 
-          ++ ' for business object ' ++ sb.eid
-          ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
-        #}
+        ++ ' treated as transient attribute ' ++ attrKey
+        ++ ' for business object ' ++ sb.eid
+        ++ ' of class defined at ' ++ sb._boScope.lexiLoc()
+         #}
       }
 
       # persist all attributes of this business object
-      this.persistOutlet <- (className(bo), sb.eid, persistAttrs)
+      this.persistOutlet <- ( className( bo ), sb.eid, persistAttrs )
       # mark it dumped to version
       sb._dumped_version = this._dump_version
     }
 
     # dump all live objects in extent
-    for (boClass, boExtent) from this._extents do {
-      for (eid, bo) from boExtent do case bo of {{ SuperBack: sb }} -> {
+    for ( boClass, boExtent ) from this._extents do {
+      for ( eid, bo ) from boExtent do case bo of { { SuperBack: sb } } -> {
         #if eid != sb.eid then
         #  error( 'bug: eid mismatch ' ++ eid ++ ' vs ' ++ sb.eid )
         _dumpBo( bo, sb )
@@ -423,46 +422,46 @@ console.debug<| 'persist dump '++className(bo)++' # '++sb.eid
     }
 
     # baseline the base data from history replay
-    this.syncData('<baseline>')
+    this.syncData( '<baseline>' )
   }
 
   method _cleanout_obj ( bo, sb, persist=true ) {
-    boClass = constructor(bo)
+    boClass = constructor( bo )
     bocIndices = this._indices[ boClass ] |> None
-    touchedIndices = {}  # collect touched global indices by attr
+    touchedIndices = {} # collect touched global indices by attr
 
-    for (attrKey, attrVal) from sb._boScope.attrs() do case attrVal of {
+    for ( attrKey, attrVal ) from sb._boScope.attrs() do case attrVal of {
       # referencing another business object, settle the relationship
-      {{ SuperBack: sbRef }} ->  {
+      { { SuperBack: sbRef } } -> {
         this._cleanup_rel( bo, sb, attrKey, attrVal, sbRef )
       }
       # handle trivially representable values, including `nil`
-      ;| hasReConRepr(attrVal) -> {
+      ; | hasReConRepr( attrVal ) -> {
         # encounter touched index by sb attr
-        case bocIndices &> bocIndices[ attrKey ] |> nil of { bois } -> 
-         for boi from bois do {
-            touchedIndices[ boi ] = true
+        case bocIndices &> bocIndices[ attrKey ] |> nil of { bois } ->
+        for boi from bois do {
+          touchedIndices[ boi ] = true
         }
       }
     }
 
-    for (kinKey, boKins) from sb._kins do {
-      for boKin from boKins.all() do case boKin of {{ SuperBack: sbKin }} -> {
+    for ( kinKey, boKins ) from sb._kins do {
+      for boKin from boKins.all() do case boKin of { { SuperBack: sbKin } } -> {
         this._cleanout_obj( boKin, sbKin, persist=persist )
       }
     }
 
     # remove from global extent
-    case this._extents[boClass] of { bocExtent } -> {
-      bocExtent[sb.eid] = nil
+    case this._extents[ boClass ] of { bocExtent } -> {
+      bocExtent[ sb.eid ] = nil
     }
 
     # throw away from all touched global indices
-    for (boi, _) from touchedIndices do boi.(^*)(bo)
+    for ( boi, _ ) from touchedIndices do boi.(^*) ( bo )
 
     if persist then {
       # persist the log
-      this.persistOutlet <- (className(bo), sb.eid, ())
+      this.persistOutlet <- ( className( bo ), sb.eid, () )
     }
 
     return nil
@@ -472,113 +471,113 @@ console.debug<| 'persist dump '++className(bo)++' # '++sb.eid
   # lastest finalized data file. all persistent CUD operations are replayed.
   method _replayHistory( intakeSink ) {
     for persistRecord from intakeSink do case persistRecord of {
-      {( boClassName, eid, attrChgs )} -> {
+      { ( boClassName, eid, attrChgs ) } -> {
         # db has the mounted DbApp as a super, resolving business classes
         # by name from there
         boClass = super?$boClassName
-        if ClassType != type(boClass) then error (
+        if ClassType != type( boClass ) then error (
           'Business class ' ++ boClassName ++ ' not available!'
         )
 
         # admit historical largest eid, will not be needed in uuid schema
         ai if eid > this._last_eid then
-          this._last_eid = eid
+        this._last_eid = eid
 
-        bocExtent = this._extents[boClass] |>    (
-                    this._extents[boClass] = {} )
+        bocExtent = this._extents[ boClass ] |> (
+        this._extents[ boClass ] = {} )
 
-        case bo = bocExtent[eid] of {
+        case bo = bocExtent[ eid ] of {
           nil -> {
             # this bo not created yet, do non-standard construction of the
             # business object
             sb = SuperBack( this, eid )
             bo = newBo( boClass, sb )
 
-            bocExtent[eid] = bo
+            bocExtent[ eid ] = bo
           }
-          {{ SuperBack: sb }} -> {
-            pass  # already created, proceed to apply attr updates
+          { { SuperBack: sb } } -> {
+            pass # already created, proceed to apply attr updates
           }
           error( 'bug: no SuperBack on existing bo' )
         }
 
         bocIndices = this._indices[ boClass ] |> None
-        touchedIndices = {}  # collect touched global indices by attr
-        if null(attrChgs) then {  # deletion
-            this._cleanout_obj( bo, sb, persist=false )
-            continue
+        touchedIndices = {} # collect touched global indices by attr
+        if null( attrChgs ) then { # deletion
+          this._cleanout_obj( bo, sb, persist=false )
+          continue
         }
         newReferees = []
         for attrChg from attrChgs do case attrChg of {
           # change of relationship
-          {( attrKey, refClassName, eidRef )} -> {
+          { ( attrKey, refClassName, eidRef ) } -> {
             refClass = super?$refClassName
-            if ClassType != type(refClass) then error (
+            if ClassType != type( refClass ) then error (
               'Business class ' ++ refClassName ++ ' not available!'
             )
-            case (refExtent = this._extents[refClass]) &> refExtent[eidRef] of {
-              nil -> error( 'The business object ' ++ refClassName ++ '#' ++ eidRef 
-                  ++ ' lost, referenced via ' ++ attrKey ++ ' by ' ++ boClassName 
-                  ++ '#' ++ eid )
+            case ( refExtent = this._extents[ refClass ] ) &> refExtent[ eidRef ] of {
+              nil -> error( 'The business object ' ++ refClassName ++ '#' ++ eidRef
+                ++ ' lost, referenced via ' ++ attrKey ++ ' by ' ++ boClassName
+              ++ '#' ++ eid )
               { boRef } -> { pass }
             }
 
             # cleanup the old relationship
-            case attrValOld = sb._boScope.get(attrKey) of {{ SuperBack: sbRefOld }} ->
-              this._cleanup_rel( bo, sb, attrKey, attrValOld, sbRefOld)
+            case attrValOld = sb._boScope.get( attrKey ) of { { SuperBack: sbRefOld } } ->
+            this._cleanup_rel( bo, sb, attrKey, attrValOld, sbRefOld )
 
             # remember this new referee to connect
-            case boRef of {{ SuperBack: sbRef }} -> {
+            case boRef of { { SuperBack: sbRef } } -> {
               pkargs( attrKey, boRef, sbRef ) => newReferees
             }
           }
 
           # change of trivial attribute
-          {( attrKey, attrVal )} -> {
+          { ( attrKey, attrVal ) } -> {
             # encounter touched index by this attr
             case bocIndices &> bocIndices[ attrKey ] |> nil of { bois } -> {
               for boi from bois do
-                touchedIndices[ boi ] = true
+              touchedIndices[ boi ] = true
             }
 
             # update attr without magic
-            sb._boScope.put(attrKey: attrVal)
+            sb._boScope.put( attrKey: attrVal )
           }
 
-          error( 'bug: unsupported persistent attr chg pattern', 
-            type=type(attrChg), value=attrChg )
+          error( 'bug: unsupported persistent attr chg pattern',
+          type=type( attrChg ), value=attrChg )
         }
         # settle the relationship only after all attr updates are applied, or
         # the kin indices at referees might capture wrong index keys
         for ( attrKey, boRef, sbRef ) from newReferees do {
           # update ref attr of this relationship without magic
-          sb._boScope.put(attrKey: boRef)
+          sb._boScope.put( attrKey: boRef )
           # settle the relationship
           this._settle_rel( bo, sb, attrKey, boRef, sbRef )
         }
         # re-index into all touched global indices
-        for (boi, _) from touchedIndices do boi.(<-)(bo)
+        for ( boi, _ ) from touchedIndices do boi.(<-) ( bo )
       }
 
-      error( 'bug: unsupported persistent record pattern' 
-        type=type(persistRecord), value=persistRecord )
+      error( 'bug: unsupported persistent record pattern'
+      type= type( persistRecord ), value=persistRecord )
     }
   }
 
   # issue and wait-done a system sync point
-  method syncData(ssp = None) {
-    case type(ssp) of {
+  method syncData( ssp = None ) {
+    case type( ssp ) of {
       StringType -> { pass }
       # use system nano timestamp if not specified
       None -> ssp = 'ssp@' ++ console.now()
       # the sync point identifier needs to be a string
-      ssp = repr(ssp)
+      ssp = repr( ssp )
     }
     # issue a system sync point
     dsyncSig = sink
     this.persistOutlet <- dsyncSig: ssp
     # the sig sink will be marked eos after sync done, wait for that
-    for _ from dsyncSig do error('impossible')
+    for _ from dsyncSig do error( 'impossible' )
     return nil
   }
 
@@ -589,7 +588,7 @@ export class SuperBack {
   method __init__ (
     db as this.db, eid as this.eid,
   ) pass
-  
+
   # informed reverse references, to referencers of `that` business object,
   # keyed by a pair of <rel-class>:<ref-attr>, then by the key attrs.
   _kins = {}
@@ -605,13 +604,16 @@ export class SuperBack {
   # the referer within an BoIndex object created by `createKinIndex()` or
   # BoSet object created by `createKinSet()`, resides in the referee's SuperBack
   # super object, available as a super attribute there from the referee object.
-  method createKinIndex ( kinAttr, relClass, relAttr, indexSpec, unique=false ) {
-    idxName = kinAttr++'@'++className(that)++'<-'++relClass++'.'++relAttr
+  method createKinIndex (
+    kinAttr, relClass, relAttr, indexSpec, unique=false,
+  ) {
+    idxName = kinAttr ++ '@' ++ className( that ) ++ '<-' ++ relClass
+    ++ '.' ++ relAttr
     idx = if unique
-      then BuIndex( indexSpec, name=idxName )
-      else BoIndex( indexSpec, name=idxName )
+    then BuIndex( indexSpec, name=idxName )
+    else BoIndex( indexSpec, name=idxName )
     # chain the 2 assignments into single transaction
-    this._kins[ relClass:(''++relAttr) ] = (
+    this._kins[ relClass : repr( relAttr ) ] = (
       # will be available from `that` as super attr
       this$kinAttr = idx
     )
@@ -632,7 +634,7 @@ export class SuperBack {
   method createKinSet ( kinAttr, relClass, relAttr ) {
     ks = BoSet()
     # chain the 2 assignments into single transaction
-    this._kins[ relClass:(''++relAttr) ] = (
+    this._kins[ relClass : repr( relAttr ) ] = (
       # will be available from `that` as super attr
       this$kinAttr = ks
     )
@@ -642,7 +644,7 @@ export class SuperBack {
   # `extends db.superBack()` from a business object's __init__() triggers
   # this magic method, such a statement carries *persistent object creation*
   # semantic regarding the target `db` being the persistence backer.
-  method (<-^) (boScope) {
+  method (<-^) ( boScope ) {
     this?_boScope &> error (
       'bug: more than 1 business objects per SuperBack instance'
     )
@@ -657,15 +659,15 @@ export class SuperBack {
   # ( <-@) handles `this.xxx = yyy` from a business child (referred to by `that`)
   # (*<-@) handles `obj.xxx = yyy` for `obj` being a business child (referred to by `that`)
 
-  method (*<-@) (attrKey, attrVal) {
+  method (*<-@) ( attrKey, attrVal ) {
     case that?$attrKey of { attrValOld } -> {
       if attrValOld == attrVal then {
-        return attrVal  # no value change, nop
+        return attrVal # no value change, nop
       }
 
       # cleanup the old relationship
-      case attrValOld of {{ SuperBack: sbRefOld }} ->
-        this.db._cleanup_rel( that, this, attrKey, attrValOld, sbRefOld)
+      case attrValOld of { { SuperBack: sbRefOld } } ->
+      this.db._cleanup_rel( that, this, attrKey, attrValOld, sbRefOld )
     }
 
     # apply the attribute update
@@ -674,7 +676,7 @@ export class SuperBack {
     # settle new attribute
     this.db._settle_attr( that, this, attrKey, attrVal )
 
-    attrVal  # keep the assignment result eval to target value as in normal cases
+    attrVal # keep the assignment result eval to target value as in normal cases
   }
 
   # use same method impl. for (<-@) and (*<-@), treating internal/external attr
@@ -685,4 +687,3 @@ export class SuperBack {
   method delete() this.db._cleanout_obj( that, this )
 
 }
-

@@ -9,7 +9,7 @@ cmdLineTo( '127.0.0.1', 3721, )
 # and wait for a conout cmd for each posted cmd.
 
 {
-  # use interpolated expr to compose rpc commands, 
+  # use interpolated expr to compose rpc commands,
   # post to local conmsg := 2 for local logging,
   # post to local conout := 1 for cli eval result.
 
@@ -18,11 +18,11 @@ cmdLineTo( '127.0.0.1', 3721, )
     case db.deptByName[ 'Dev' ] of {
       { dev } -> { pass }
 
-      peer.p2c(conmsg, repr(
-        'Populating DB contents.'
-      ))
+      peer.p2c( conmsg, repr(
+          'Populating DB contents.'
+      ) )
 
-      dev = Depart('Dev')
+      dev = Depart( 'Dev' )
 
       compl = Person( name = 'Compl', age = 41 )
       jim = Person( name = 'Jim', age = 11 )
@@ -33,28 +33,28 @@ cmdLineTo( '127.0.0.1', 3721, )
       db.syncData()
     }
 
-    case db.personByName['Compl'] of { compl=>_ } -> {
-      peer.p2c(conmsg, repr(
-        "Compl's record is: " ++ compl
-      ))
+    case db.personByName[ 'Compl' ] of { compl=>_ } -> {
+      peer.p2c( conmsg, repr(
+          "Compl's record is: " ++ compl
+      ) )
     }
-    case db.personByName['Jim'] of { jim=>_ } -> {
-      peer.p2c(conmsg, repr(
-        "Got a Jim ver# " ++ ( jim.version $=> 'legacy' )
-      ))
+    case db.personByName[ 'Jim' ] of { jim=>_ } -> {
+      peer.p2c( conmsg, repr(
+          "Got a Jim ver# " ++ ( jim.version $=> 'legacy' )
+      ) )
     }
-    peer.p2c(conmsg, repr(
-      'Dev Org is ' ++ dev ++ ' with workers:'
-    ))
-    for (ixk, workRel) from dev.workers.range() do 
-      peer.p2c(conmsg, repr(
+    peer.p2c( conmsg, repr(
+        'Dev Org is ' ++ dev ++ ' with workers:'
+    ) )
+    for ( ixk, workRel ) from dev.workers.range() do
+    peer.p2c( conmsg, repr(
         '  ' ++ workRel.person ++ ' in order of ' ++ ixk
-      ))
+    ) )
 
     # some artificial delay
-    for _ from console.everyMillis(200) do { break }
+    for _ from console.everyMillis( 200 ) do { break }
 
-    peer.p2c(conout, repr("That's it atm."))
+    peer.p2c( conout, repr( "That's it atm." ) )
   }
 }
 

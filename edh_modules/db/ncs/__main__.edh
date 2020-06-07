@@ -22,11 +22,11 @@ console.info<| 'DB console client connected - ' ++ peer
     repr( "(dbc)Đ: " )
   )
 
-  while false == peer.eol() {  # this is the *Loop* in so-called REPL
+  while false == peer.eol() { # this is the *Loop* in so-called REPL
     # Read+Eval (peer.readCommand) -> Print (peer.print) -> Loop
 
     case peer.readCommand() of {
-      nil -> {  # conout an empty string or the console client will
+      nil -> { # conout an empty string or the console client will
         # wait for its eval result forever
         peer.p2c(
           1, # direct to channel conout := 1
@@ -40,7 +40,7 @@ console.info<| 'DB console client connected - ' ++ peer
           "'Issuing DB shutdown ...'",
         )
         # delay a bit for console client to see the msg
-        for _ from console.everyMillis(100) do { break }
+        for _ from console.everyMillis( 100 ) do { break }
 
         # disconnect this console client
         peer.stop()
@@ -48,7 +48,7 @@ console.info<| 'DB console client connected - ' ++ peer
         # shutdown the db app and commit its changes
         server.stop()
       }
-      batteries.quit -> { break }  # quit the networked db console
+      batteries.quit -> { break } # quit the networked db console
       batteries.dir -> peer.p2c(
         1, # direct to channel conout := 1
         repr( sprintDir() ),
@@ -58,7 +58,7 @@ console.info<| 'DB console client connected - ' ++ peer
           1, # direct to channel conout := 1
           repr( cmdVal ),
         )
-        cmdVal = nil  # clear it
+        cmdVal = nil # clear it
       }
     }
 
@@ -66,7 +66,7 @@ console.info<| 'DB console client connected - ' ++ peer
     if false == peer.eol() then {
       peer.p2c(
         2, # direct to channel conmsg := 2
-        repr( 'Recovered from error\n  exception=' ++ cmdExc),
+        repr( 'Recovered from error\n  exception=' ++ cmdExc ),
       )
       peer.p2c(
         1, # direct to channel conout := 1
@@ -75,8 +75,8 @@ console.info<| 'DB console client connected - ' ++ peer
     }
   }
 
-} $=> { cmdExc } -> {  # catch & report errors, don't crash the server
-  console.error<| 'DB console client '++ peer ++ ' caused trouble:\n' ++ cmdExc
+} $=> { cmdExc } -> { # catch & report errors, don't crash the server
+  console.error<| 'DB console client ' ++ peer ++ ' caused trouble:\n' ++ cmdExc
 }
 
 console.info<| 'DB console client disconnected - ' ++ peer
