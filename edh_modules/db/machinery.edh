@@ -232,7 +232,7 @@ export class DataBack {
       bocIndices[ keyAttr ] |> (
       bocIndices[ keyAttr ] = [] )
     )
-    this$idxAttr = idx
+    this@idxAttr = idx
     return nil
   }
 
@@ -476,7 +476,7 @@ export class DataBack {
       { ( boClassName, eid, attrChgs ) } -> {
         # db has the mounted DbApp as a super, resolving business classes
         # by name from there
-        boClass = super?$boClassName
+        boClass = super?@boClassName
         if ClassType != type( boClass ) then error (
           'Business class ' ++ boClassName ++ ' not available!'
         )
@@ -513,7 +513,7 @@ export class DataBack {
         for attrChg from attrChgs do case attrChg of {
           # change of relationship
           { ( attrKey, refClassName, eidRef ) } -> {
-            refClass = super?$refClassName
+            refClass = super?@refClassName
             if ClassType != type( refClass ) then error (
               'Business class ' ++ refClassName ++ ' not available!'
             )
@@ -617,7 +617,7 @@ export class SuperBack {
     # chain the 2 assignments into single transaction
     this._kins[ relClass : ( '' ++ relAttr ) ] = (
       # will be available from `that` as super attr
-      this$kinAttr = idx
+      this@kinAttr = idx
     )
     return nil
   }
@@ -638,7 +638,7 @@ export class SuperBack {
     # chain the 2 assignments into single transaction
     this._kins[ relClass : ( '' ++ relAttr ) ] = (
       # will be available from `that` as super attr
-      this$kinAttr = ks
+      this@kinAttr = ks
     )
     return nil
   }
@@ -662,7 +662,7 @@ export class SuperBack {
   # (*<-@) handles `obj.xxx = yyy` for `obj` being a business child (referred to by `that`)
 
   method (*<-@) ( attrKey, attrVal ) {
-    case that?$attrKey of { attrValOld } -> {
+    case that?@attrKey of { attrValOld } -> {
       if attrValOld == attrVal then {
         return attrVal # no value change, nop
       }
@@ -673,7 +673,7 @@ export class SuperBack {
     }
 
     # apply the attribute update
-    that$attrKey = attrVal
+    that@attrKey = attrVal
 
     # settle new attribute
     this.db._settle_attr( that, this, attrKey, attrVal )
