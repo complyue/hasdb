@@ -59,8 +59,7 @@ installDbBatteries !world = do
       sequence
       $  [ (nm, ) <$> mkHostProc moduScope mc nm hp args
          | (mc, nm, hp, args) <-
-           [ (EdhMethod, "className", classNameProc, WildReceiver)
-           , ( EdhMethod
+           [ ( EdhMethod
              , "newBo"
              , newBoProc
              , PackReceiver

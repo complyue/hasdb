@@ -19,29 +19,6 @@ import           Language.Edh.EHI
 import           DB.Storage.DataDir
 
 
--- | utility className(*args,**kwargs)
-classNameProc :: EdhProcedure
-classNameProc (ArgsPack !args !kwargs) !exit = do
-  !pgs <- ask
-  let callerCtx   = edh'context pgs
-      callerScope = contextScope callerCtx
-      !argsCls    = classNameOf <$> args
-  if Map.null kwargs
-    then case argsCls of
-      []  -> exitEdhProc exit (EdhClass $ objClass $ thisObject callerScope)
-      [t] -> exitEdhProc exit t
-      _   -> exitEdhProc exit (EdhTuple argsCls)
-    else exitEdhProc
-      exit
-      (EdhArgsPack $ ArgsPack argsCls $ Map.map classNameOf kwargs)
- where
-  classNameOf :: EdhValue -> EdhValue
-  classNameOf (EdhClass (ProcDefi _ _ pd)) = EdhString $ procedureName pd
-  classNameOf (EdhObject !obj) =
-    EdhString $ procedureName $ procedure'decl $ objClass obj
-  classNameOf _ = nil
-
-
 -- | utility newBo(boClass, sbObj)
 -- this performs non-standard business object construction
 newBoProc :: EdhProcedure

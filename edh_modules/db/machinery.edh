@@ -3,13 +3,6 @@
  # entity/relationship business objects.
  #}
 
-# re-export these
-export import (
-  className,
-  **_, # consume (drop) extra artifacts exported there, don't fail
-) 'db/RT'
-
-# don't re-export these
 import (
   DbArray,
   newBo,
@@ -25,6 +18,10 @@ import (
   BuIndex as _BuIndex,
   **_, # consume (drop) extra artifacts exported there, don't fail
 ) 'db/Storage/InMem'
+
+
+export method className( o ) case constructor( o ) of { cls } -> cls.name
+
 
 # duck-typed KinColection, abstracting concrete implementations:
 #  * BoSet    - unordered set
@@ -227,10 +224,10 @@ export class DataBack {
     then BuIndex( indexSpec, name= '' ++idxAttr++ '@' ++boClass )
     else BoIndex( indexSpec, name= '' ++idxAttr++ '@' ++boClass )
     bocIndices = this._indices[ boClass ] |> (
-    this._indices[ boClass ] = {} )
+      this._indices[ boClass ] = {} )
     for keyAttr from idx.keys do idx => (
       bocIndices[ keyAttr ] |> (
-      bocIndices[ keyAttr ] = [] )
+        bocIndices[ keyAttr ] = [] )
     )
     this@idxAttr = idx
     return nil
@@ -325,7 +322,7 @@ export class DataBack {
 
       if this._dump_version >= 0 then {
         # persist the new attribute value
-          this.persistOutlet <- ( className( bo ), sb.eid, [
+        this.persistOutlet <- ( className( bo ), sb.eid, [
             ( attrKey, attrVal )
         ] )
       }
@@ -354,7 +351,7 @@ export class DataBack {
     }
     if this._dump_version >= 0 then {
       # persist the new relationship
-        this.persistOutlet <- ( className( boRel ), sbRel.eid, [
+      this.persistOutlet <- ( className( boRel ), sbRel.eid, [
           ( refAttr, className( bo ), sb.eid )
       ] )
     }
@@ -486,7 +483,7 @@ export class DataBack {
         this._last_eid = eid
 
         bocExtent = this._extents[ boClass ] |> (
-        this._extents[ boClass ] = {} )
+          this._extents[ boClass ] = {} )
 
         case bo = bocExtent[ eid ] of {
           nil -> {
@@ -520,7 +517,7 @@ export class DataBack {
             case ( refExtent = this._extents[ refClass ] ) &> refExtent[ eidRef ] of {
               nil -> error( 'The business object ' ++ refClassName ++ '#' ++ eidRef
                 ++ ' lost, referenced via ' ++ attrKey ++ ' by ' ++ boClassName
-              ++ '#' ++ eid )
+                ++ '#' ++ eid )
               { boRef } -> { pass }
             }
 
@@ -547,7 +544,7 @@ export class DataBack {
           }
 
           error( 'bug: unsupported persistent attr chg pattern',
-          type=type( attrChg ), value=attrChg )
+            type=type( attrChg ), value=attrChg )
         }
         # settle the relationship only after all attr updates are applied, or
         # the kin indices at referees might capture wrong index keys
@@ -562,7 +559,7 @@ export class DataBack {
       }
 
       error( 'bug: unsupported persistent record pattern'
-      type= type( persistRecord ), value=persistRecord )
+        type= type( persistRecord ), value=persistRecord )
     }
   }
 
