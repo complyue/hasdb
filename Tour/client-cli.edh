@@ -1,5 +1,5 @@
 
-import * 'net/demo/cli'
+import * 'net/demo/hack'
 
 # it is expected that the hasdb demo server to be there, e.g.
 #   cabal v2-run hasdb < Tour/server.edh

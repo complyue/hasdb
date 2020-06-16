@@ -52,7 +52,7 @@ type DimName = Text
 type DimSize = Int
 parseArrayShape :: EdhProgState -> EdhValue -> (ArrayShape -> STM ()) -> STM ()
 parseArrayShape !pgs !val !exit = case val of
-  EdhTuple (dim1 : dims) -> parseDim dim1 $ \pd ->
+  EdhArgsPack (ArgsPack (dim1 : dims) _) -> parseDim dim1 $ \pd ->
     seqcontSTM (parseDim <$> dims) $ \pds -> exit $ ArrayShape $ pd :| pds
   _ -> edhValueReprSTM pgs val
     $ \r -> throwEdhSTM pgs UsageError $ "Invalid array shape spec: " <> r
@@ -70,7 +70,8 @@ parseArrayShape !pgs !val !exit = case val of
   parseDim v _ = edhValueReprSTM pgs v
     $ \r -> throwEdhSTM pgs UsageError $ "Invalid dimension spec: " <> r
 edhArrayShape :: ArrayShape -> EdhValue
-edhArrayShape (ArrayShape !shape) = EdhTuple $! edhDim <$> NE.toList shape
+edhArrayShape (ArrayShape !shape) = EdhArgsPack
+  $ ArgsPack (edhDim <$> NE.toList shape) mempty
  where
   edhDim :: (DimName, DimSize) -> EdhValue
   edhDim (""  , size) = EdhDecimal $ fromIntegral size
@@ -136,8 +137,7 @@ arrayFlatMVector (DbArray (ArrayMeta _ !shape _) !fptr) =
 -- | unwrap an array from Edh object form
 unwrapArrayObject
   :: forall e . (Typeable e) => Object -> STM (Maybe (DbArray e))
-unwrapArrayObject !ao =
-  fromDynamic <$> readTVar (entity'store $ objEntity ao)
+unwrapArrayObject !ao = fromDynamic <$> readTVar (entity'store $ objEntity ao)
 
 
 -- XXX this is called from 'unsafeIOToSTM', and retry prone, has to be solid
@@ -244,15 +244,12 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
                   [ ( "[]"
                     , EdhMethod
                     , aryIdxReadProc
-                    , PackReceiver [RecvArg "idx" Nothing Nothing]
+                    , PackReceiver [mandatoryArg "idx"]
                     )
                   , ( "[=]"
                     , EdhMethod
                     , aryIdxWriteProc
-                    , PackReceiver
-                      [ RecvArg "idx" Nothing Nothing
-                      , RecvArg "val" Nothing Nothing
-                      ]
+                    , PackReceiver [mandatoryArg "idx", mandatoryArg "val"]
                     )
                   , ("__repr__", EdhMethod, aryReprProc, PackReceiver [])
                   , ("all"     , EdhGnrtor, aryAllProc , PackReceiver [])
@@ -340,7 +337,7 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
             Just (ary :: DbI8Array) -> case args of
               -- TODO support slicing, of coz need to tell a slicing index from
               --      an element index first
-              [EdhTuple !idxs] -> readIntArray pgs ary idxs
+              [EdhArgsPack (ArgsPack !idxs _)] -> readIntArray pgs ary idxs
                 $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
               idxs -> readIntArray pgs ary idxs
                 $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
@@ -349,7 +346,7 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
         Just (ary :: DbF8Array) -> case args of
           -- TODO support slicing, of coz need to tell a slicing index from
           --      an element index first
-          [EdhTuple !idxs] -> readFloatingArray pgs ary idxs
+          [EdhArgsPack (ArgsPack !idxs _)] -> readFloatingArray pgs ary idxs
             $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
           idxs -> readFloatingArray pgs ary idxs
             $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
@@ -371,14 +368,15 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
             Just (ary :: DbI8Array) -> case args of
               -- TODO support slicing assign, of coz need to tell a slicing index
               --      from an element index first
-              [EdhTuple !idxs, EdhDecimal !dv] -> case D.decimalToInteger dv of
-                Nothing ->
-                  throwEdhSTM pgs UsageError $ "Invalid integer: " <> T.pack
-                    (show dv)
-                Just !iv -> do
-                  let (ev :: Int64) = fromInteger iv
-                  writeIntArray pgs ary idxs ev
-                    $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
+              [EdhArgsPack (ArgsPack !idxs _), EdhDecimal !dv] ->
+                case D.decimalToInteger dv of
+                  Nothing ->
+                    throwEdhSTM pgs UsageError $ "Invalid integer: " <> T.pack
+                      (show dv)
+                  Just !iv -> do
+                    let (ev :: Int64) = fromInteger iv
+                    writeIntArray pgs ary idxs ev
+                      $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
               [idx, EdhDecimal !dv] -> case D.decimalToInteger dv of
                 Nothing ->
                   throwEdhSTM pgs UsageError $ "Invalid integer: " <> T.pack
@@ -394,7 +392,7 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
         Just (ary :: DbF8Array) -> case args of
           -- TODO support slicing assign, of coz need to tell a slicing index
           --      from an element index first
-          [EdhTuple !idxs, EdhDecimal !dv] -> do
+          [EdhArgsPack (ArgsPack !idxs _), EdhDecimal !dv] -> do
             let ev :: Double
                 ev = fromRational $ toRational dv
             writeFloatingArray pgs ary idxs ev

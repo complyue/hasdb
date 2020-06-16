@@ -63,25 +63,25 @@ installDbBatteries !world = do
              , "newBo"
              , newBoProc
              , PackReceiver
-               [ RecvArg "boClass" Nothing Nothing
-               , RecvArg "sbEnt"   Nothing Nothing
+               [ mandatoryArg "boClass"
+               , mandatoryArg "sbEnt"
                ]
              )
            , ( EdhMethod
              , "streamToDisk"
              , streamToDiskProc
              , PackReceiver
-               [ RecvArg "persistOutlet"  Nothing Nothing
-               , RecvArg "dataFileFolder" Nothing Nothing
-               , RecvArg "sinkBaseDFD"    Nothing Nothing
+               [ mandatoryArg "persistOutlet"
+               , mandatoryArg "dataFileFolder"
+               , mandatoryArg "sinkBaseDFD"
                ]
              )
            , ( EdhMethod
              , "streamFromDisk"
              , streamFromDiskProc
              , PackReceiver
-               [ RecvArg "restoreOutlet" Nothing Nothing
-               , RecvArg "baseDFD"       Nothing Nothing
+               [ mandatoryArg "restoreOutlet"
+               , mandatoryArg "baseDFD"
                ]
              )
            ]

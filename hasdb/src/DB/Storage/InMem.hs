@@ -37,17 +37,9 @@ bosHostCtor !pgsCtor _ !obs !ctorExit = do
   modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
     [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp args
     | (nm, vc, hp, args) <-
-      [ ( "<-"
-        , EdhMethod
-        , bosAddProc
-        , PackReceiver [RecvArg "bo" Nothing Nothing]
-        )
-      , ( "^*"
-        , EdhMethod
-        , bosThrowAwayProc
-        , PackReceiver [RecvArg "bo" Nothing Nothing]
-        )
-      , ("all", EdhGnrtor, bosAllProc, PackReceiver [])
+      [ ("<-" , EdhMethod, bosAddProc      , PackReceiver [mandatoryArg "bo"])
+      , ("^*" , EdhMethod, bosThrowAwayProc, PackReceiver [mandatoryArg "bo"])
+      , ("all", EdhGnrtor, bosAllProc      , PackReceiver [])
       ]
     ]
   ctorExit $ toDyn bosVar
@@ -168,10 +160,11 @@ parseIndexSpec pgs !args !exit = case args of
       $ \asc -> doExit [(AttrByName attrName, asc)]
   [EdhExpr _ (InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (LitExpr (BoolLiteral !asc))) _]
     -> doExit [(AttrByName attrName, asc)]
-  [EdhExpr _ (TupleExpr !fieldSpecs) _] ->
-    seqcontSTM (fieldFromExpr <$> fieldSpecs) doExit
-  [EdhTuple !fieldSpecs  ] -> seqcontSTM (fieldFromVal <$> fieldSpecs) doExit
-  [EdhList  (List _ !fsl)] -> do
+  [EdhExpr _ (ArgsPackExpr !fieldSpecs) _] ->
+    seqcontSTM (fieldFromArgSndr <$> fieldSpecs) doExit
+  [EdhArgsPack (ArgsPack !fieldSpecs _)] ->
+    seqcontSTM (fieldFromVal <$> fieldSpecs) doExit
+  [EdhList (List _ !fsl)] -> do
     fieldSpecs <- readTVar fsl
     seqcontSTM (fieldFromVal <$> fieldSpecs) doExit
   _ -> throwEdhSTM pgs UsageError $ "Invalid index specification: " <> T.pack
@@ -182,6 +175,11 @@ parseIndexSpec pgs !args !exit = case args of
     when (null spec)
       $ throwEdhSTM pgs UsageError "Index specification can not be empty"
     exit $ IndexSpec spec
+  fieldFromArgSndr :: ArgSender -> ((AttrKey, AscSort) -> STM ()) -> STM ()
+  fieldFromArgSndr !sndr !exit' = case sndr of
+    SendPosArg !x -> fieldFromExpr x exit'
+    _ -> throwEdhSTM pgs UsageError $ "Invalid index field spec: " <> T.pack
+      (show sndr)
   fieldFromExpr :: Expr -> ((AttrKey, AscSort) -> STM ()) -> STM ()
   fieldFromExpr !x !exit' = case x of
     AttrExpr (DirectRef (NamedAttr !attrName)) ->
@@ -191,10 +189,10 @@ parseIndexSpec pgs !args !exit = case args of
         $ \asc -> exit' (AttrByName attrName, asc)
     InfixExpr ":" (AttrExpr (DirectRef (NamedAttr !attrName))) (LitExpr (BoolLiteral !asc))
       -> exit' (AttrByName attrName, asc)
-    TupleExpr [AttrExpr (DirectRef (NamedAttr !attrName)), AttrExpr (DirectRef (NamedAttr ordSpec))]
+    ArgsPackExpr [SendPosArg (AttrExpr (DirectRef (NamedAttr !attrName))), SendPosArg (AttrExpr (DirectRef (NamedAttr ordSpec)))]
       -> indexFieldSortOrderSpec pgs ordSpec
         $ \asc -> exit' (AttrByName attrName, asc)
-    TupleExpr [AttrExpr (DirectRef (NamedAttr !attrName)), LitExpr (BoolLiteral !asc)]
+    ArgsPackExpr [SendPosArg (AttrExpr (DirectRef (NamedAttr !attrName))), SendPosArg (LitExpr (BoolLiteral !asc))]
       -> exit' (AttrByName attrName, asc)
     _ -> throwEdhSTM pgs UsageError $ "Invalid index field spec: " <> T.pack
       (show x)
@@ -202,13 +200,13 @@ parseIndexSpec pgs !args !exit = case args of
   fieldFromVal !x !exit' = case x of
     EdhPair (EdhString !attrName) (EdhBool !asc) ->
       exit' (AttrByName attrName, asc)
-    EdhTuple [EdhString !attrName, EdhBool !asc] ->
+    EdhArgsPack (ArgsPack [EdhString !attrName, EdhBool !asc] _) ->
       exit' (AttrByName attrName, asc)
     EdhString !attrName -> exit' (AttrByName attrName, True)
     EdhPair (EdhString !attrName) (EdhString !ordSpec) ->
       indexFieldSortOrderSpec pgs ordSpec
         $ \asc -> exit' (AttrByName attrName, asc)
-    EdhTuple [EdhString !attrName, EdhString !ordSpec] ->
+    EdhArgsPack (ArgsPack [EdhString !attrName, EdhString !ordSpec] _) ->
       indexFieldSortOrderSpec pgs ordSpec
         $ \asc -> exit' (AttrByName attrName, asc)
     _ -> throwEdhSTM pgs UsageError $ "Invalid index field spec: " <> T.pack
@@ -230,7 +228,7 @@ edhIdxKeyVal _ EdhNil         !exit = exit Nothing
 edhIdxKeyVal _ (EdhBool    v) !exit = exit $ Just $ IdxBoolVal v
 edhIdxKeyVal _ (EdhDecimal v) !exit = exit $ Just $ IdxNumVal v
 edhIdxKeyVal _ (EdhString  v) !exit = exit $ Just $ IdxStrVal v
-edhIdxKeyVal !pgs (EdhTuple vs) !exit =
+edhIdxKeyVal !pgs (EdhArgsPack (ArgsPack !vs _)) !exit =
   seqcontSTM (edhIdxKeyVal pgs <$> vs) $ exit . Just . IdxAggrVal
 -- list is mutable, meaning can change without going through entity attr
 -- update, don't support it unless sth else is figured out
@@ -240,18 +238,19 @@ edhIdxKeyVal !pgs !val _ =
 
 edhIdxKeyVals
   :: EdhProgState -> EdhValue -> (Maybe [Maybe IdxKeyVal] -> STM ()) -> STM ()
-edhIdxKeyVals _ EdhNil        !exit = exit Nothing
-edhIdxKeyVals _ (EdhTuple []) !exit = exit Nothing
-edhIdxKeyVals pgs (EdhTuple kvs) !exit =
+edhIdxKeyVals _ EdhNil                        !exit = exit Nothing
+edhIdxKeyVals _ (EdhArgsPack (ArgsPack [] _)) !exit = exit Nothing
+edhIdxKeyVals pgs (EdhArgsPack (ArgsPack !kvs _)) !exit =
   seqcontSTM (edhIdxKeyVal pgs <$> kvs) $ exit . Just
 edhIdxKeyVals pgs kv !exit = edhIdxKeyVal pgs kv $ \ikv -> exit $ Just [ikv]
 
 edhValOfIdxKey :: Maybe IdxKeyVal -> EdhValue
-edhValOfIdxKey Nothing                  = nil
-edhValOfIdxKey (Just (IdxBoolVal v   )) = EdhBool v
-edhValOfIdxKey (Just (IdxNumVal  v   )) = EdhDecimal v
-edhValOfIdxKey (Just (IdxStrVal  v   )) = EdhString v
-edhValOfIdxKey (Just (IdxAggrVal ikvs)) = EdhTuple $ edhValOfIdxKey <$> ikvs
+edhValOfIdxKey Nothing               = nil
+edhValOfIdxKey (Just (IdxBoolVal v)) = EdhBool v
+edhValOfIdxKey (Just (IdxNumVal  v)) = EdhDecimal v
+edhValOfIdxKey (Just (IdxStrVal  v)) = EdhString v
+edhValOfIdxKey (Just (IdxAggrVal ikvs)) =
+  EdhArgsPack $ ArgsPack (edhValOfIdxKey <$> ikvs) mempty
 
 
 -- todo using lists here may be less efficient due to cache unfriendly,
@@ -295,7 +294,8 @@ extractIndexKey !pgs spec@(IndexSpec !spec') !bo !exit =
     lookupEdhObjAttr pgs bo k >>= \v -> edhIdxKeyVal pgs v exit'
 
 edhValueOfIndexKey :: IndexKey -> EdhValue
-edhValueOfIndexKey (IndexKey _ ikvs) = EdhTuple $ edhValOfIdxKey <$> ikvs
+edhValueOfIndexKey (IndexKey _ ikvs) =
+  EdhArgsPack $ ArgsPack (edhValOfIdxKey <$> ikvs) mempty
 
 
 -- | Non-Unique Business Object Index
@@ -310,8 +310,9 @@ data BoIndex = BoIndex {
 lookupBoIndex :: BoIndex -> [Maybe IdxKeyVal] -> STM EdhValue
 lookupBoIndex (BoIndex !spec !tree _) !idxKeyVals =
   case TreeMap.lookup (IndexKey spec idxKeyVals) tree of
-    Nothing   -> return EdhNil
-    Just !bos -> return $ EdhTuple $ EdhObject <$> Set.toList bos
+    Nothing -> return EdhNil
+    Just !bos ->
+      return $ EdhArgsPack $ (ArgsPack (EdhObject <$> Set.toList bos) mempty)
 
 reindexBusObj
   :: EdhProgState -> BoIndex -> Object -> (BoIndex -> STM ()) -> STM ()
@@ -346,7 +347,8 @@ listIdxGroups
   -> Maybe [Maybe IdxKeyVal]
   -> STM [(IndexKey, EdhValue)]
 listIdxGroups (BoIndex !spec !tree _) !minKeyVals !maxKeyVals =
-  return $ (<$> seg) $ \(k, bos) -> (k, EdhTuple $ EdhObject <$> Set.toList bos)
+  return $ (<$> seg) $ \(k, bos) ->
+    (k, EdhArgsPack $ ArgsPack (EdhObject <$> Set.toList bos) mempty)
   where seg = indexKeyRange spec tree minKeyVals maxKeyVals
 
 -- | host constructor BoIndex( indexSpec )
@@ -366,7 +368,9 @@ boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
           Just v                  -> T.pack $ show v
     modifyTVar' obs $ Map.union $ Map.fromList
       [ (AttrByName "spec", EdhString specStr)
-      , (AttrByName "keys", EdhTuple $ attrKeyValue . fst <$> spec')
+      , ( AttrByName "keys"
+        , EdhArgsPack $ ArgsPack (attrKeyValue . fst <$> spec') mempty
+        )
       , (AttrByName "name", EdhString idxName)
       , ( AttrByName "__repr__"
         , EdhString $ "Index " <> idxName <> " " <> specStr
@@ -375,28 +379,18 @@ boiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
     modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
       [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
       | (nm, vc, hp, mthArgs) <-
-        [ ( "<-"
-          , EdhMethod
-          , boiReindexProc
-          , PackReceiver [RecvArg "bo" Nothing Nothing]
-          )
-        , ( "^*"
-          , EdhMethod
-          , boiThrowAwayProc
-          , PackReceiver [RecvArg "bo" Nothing Nothing]
-          )
+        [ ("<-", EdhMethod, boiReindexProc  , PackReceiver [mandatoryArg "bo"])
+        , ("^*", EdhMethod, boiThrowAwayProc, PackReceiver [mandatoryArg "bo"])
         , ( "[]"
           , EdhMethod
           , boiLookupProc
-          , PackReceiver [RecvArg "keyValues" Nothing Nothing]
+          , PackReceiver [mandatoryArg "keyValues"]
           )
         , ( "groups"
           , EdhGnrtor
           , boiGroupsProc
           , PackReceiver
-            [ RecvArg "min" Nothing (Just edhNoneExpr)
-            , RecvArg "max" Nothing (Just edhNoneExpr)
-            ]
+            [optionalArg "min" edhNoneExpr, optionalArg "max" edhNoneExpr]
           )
         ]
       ]
@@ -586,7 +580,9 @@ buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
           Just v                  -> T.pack $ show v
     modifyTVar' obs $ Map.union $ Map.fromList
       [ (AttrByName "spec", EdhString specStr)
-      , (AttrByName "keys", EdhTuple $ attrKeyValue . fst <$> spec')
+      , ( AttrByName "keys"
+        , EdhArgsPack $ ArgsPack (attrKeyValue . fst <$> spec') mempty
+        )
       , (AttrByName "name", EdhString idxName)
       , ( AttrByName "__repr__"
         , EdhString $ "UniqueIndex " <> idxName <> " " <> specStr
@@ -595,28 +591,18 @@ buiHostCtor !pgsCtor (ArgsPack !ctorArgs !ctorKwargs) !obs !ctorExit = do
     modifyTVar' obs . Map.union =<< Map.fromList <$> sequence
       [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
       | (nm, vc, hp, mthArgs) <-
-        [ ( "<-"
-          , EdhMethod
-          , buiReindexProc
-          , PackReceiver [RecvArg "bo" Nothing Nothing]
-          )
-        , ( "^*"
-          , EdhMethod
-          , buiThrowAwayProc
-          , PackReceiver [RecvArg "bo" Nothing Nothing]
-          )
+        [ ("<-", EdhMethod, buiReindexProc  , PackReceiver [mandatoryArg "bo"])
+        , ("^*", EdhMethod, buiThrowAwayProc, PackReceiver [mandatoryArg "bo"])
         , ( "[]"
           , EdhMethod
           , buiLookupProc
-          , PackReceiver [RecvArg "keyValues" Nothing Nothing]
+          , PackReceiver [mandatoryArg "keyValues"]
           )
         , ( "range"
           , EdhGnrtor
           , buiRangeProc
           , PackReceiver
-            [ RecvArg "min" Nothing (Just edhNoneExpr)
-            , RecvArg "max" Nothing (Just edhNoneExpr)
-            ]
+            [optionalArg "min" edhNoneExpr, optionalArg "max" edhNoneExpr]
           )
         ]
       ]

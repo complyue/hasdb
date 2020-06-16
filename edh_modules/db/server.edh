@@ -27,15 +27,15 @@ export method dbOn (
   }
 
   # wait end-of-life for each client, log err if any
-  go for peer from dbs.clients do { go {
-      method _ ( peer' ) {
+  go for peer from dbs.clients do {
+    go ( method watchForOne ( peer' ) {
         peer'.join() $=> { dbcExc } -> {
           console.warn<| 'DB client caused trouble - '
           ++ peer' ++ '\n' ++ dbcExc
         }
-      }
-  } ( peer ) }
-  # note an anoymous method is used above, to retain an attr
+    } ) ( peer )
+  }
+  # note an separate method is used above, to retain an attr
   # named `peer'`, locally in the procedure's scope, as the
   # loop will repeatedly change attr named `peer` in the outer
   # scope

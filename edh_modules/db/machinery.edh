@@ -48,16 +48,16 @@ export class BoSet {
 
   # to satisfy the duck typing criteria
   generator groups() {
-    for bo from super.all() do yield pkargs( (), ( bo, ) )
+    for bo from super.all() do yield ( (), ( bo, ) )
   }
   generator range() {
-    for bo from super.all() do yield pkargs( (), bo )
+    for bo from super.all() do yield ( (), bo )
   }
 }
 
 export class BoIndex {
   # pass verbatim ctor args to the super host class
-  method __init__( ***apk ) extends _BoIndex( ***apk )
+  method __init__(*** apk ) extends _BoIndex(*** apk )
 
   # to satisfy the duck typing criteria
   generator all() {
@@ -67,14 +67,14 @@ export class BoIndex {
   }
   generator range() {
     for ( k, g ) from super.groups() do for bo from g do {
-      yield pkargs( k, bo )
+      yield ( k, bo )
     }
   }
 }
 
 export class BuIndex {
   # pass verbatim ctor args to the super host class
-  method __init__( ***apk ) extends _BuIndex( ***apk )
+  method __init__(*** apk ) extends _BuIndex(*** apk )
 
   # to satisfy the duck typing criteria
   generator all() {
@@ -84,7 +84,7 @@ export class BuIndex {
   }
   generator groups() {
     for ( k, bo ) from super.range() do {
-      yield pkargs( k, ( bo, ) )
+      yield ( k, ( bo, ) )
     }
   }
 }
@@ -98,7 +98,7 @@ method hasReConRepr( attrVal ) case attrVal of {
     nil, # absent attribute
     BoolType, DecimalType, StringType, # literal values
     # TODO validate deep content in a container are reconstructable from repr
-    PairType, TupleType, ListType, DictType, # containers
+    PairType, ArgsPackType, ListType, DictType, # containers
     ArgsPackType, # complexer container
   ] -> true
   false
@@ -208,8 +208,8 @@ export class DataBack {
     extends( dbApp )
   }
 
-  method Array ( ***apk ) {
-    DbArray( this.dataDir, ***apk )
+  method Array (*** apk ) {
+    DbArray( this.dataDir, *** apk )
   }
 
   # all global indices created. a hierarchy of dicts by class then by key attr,
@@ -469,7 +469,7 @@ export class DataBack {
   # restore all business objects into RAM from the backing storage, i.e
   # lastest finalized data file. all persistent CUD operations are replayed.
   method _replayHistory( intakeSink ) {
-    for persistRecord from intakeSink do case persistRecord of {
+    for (*** persistRecord ) from intakeSink do case persistRecord of {
       { ( boClassName, eid, attrChgs ) } -> {
         # db has the mounted DbApp as a super, resolving business classes
         # by name from there
@@ -527,7 +527,7 @@ export class DataBack {
 
             # remember this new referee to connect
             case boRef of { { SuperBack: sbRef } } -> {
-              pkargs( attrKey, boRef, sbRef ) => newReferees
+              ( attrKey, boRef, sbRef ) => newReferees
             }
           }
 
