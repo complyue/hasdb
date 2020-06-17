@@ -16,17 +16,13 @@ jims
     dev.delete()
   }
 
-  {# TODO
-   # ($=>) catches all errors including `ProgramHalt`,
-   #       it's never a sane practice like below, though it
-   #       would just work for day-to-day cases.
-   #       shall Edh have one or more narrower catch operator,
-   #       maybe (!=>) (%=>) etc. to be used for convenience
-   #       like below, similar to Pythonic idiom:
+  {#
+   # this is similar to Pythonic idiom:
   >>> try:
   >>>   jim.version += 1
   >>> except TypeError:
   >>>   jim.version = 1
+   # but a little less specific about the exception type
    #}
   jim.version += 1 $=> jim.version = 1
 }
