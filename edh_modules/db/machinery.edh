@@ -507,14 +507,15 @@ export class DataBack {
           continue
         }
         newReferees = []
-        for attrChg from attrChgs do case attrChg of {
+        for (*** attrChg ) from attrChgs do case attrChg of {
           # change of relationship
           { ( attrKey, refClassName, eidRef ) } -> {
             refClass = super?@refClassName
             if ClassType != type( refClass ) then error (
               'Business class ' ++ refClassName ++ ' not available!'
             )
-            case ( refExtent = this._extents[ refClass ] ) &> refExtent[ eidRef ] of {
+
+            case ( this._extents[ refClass ] |> {} ) [ eidRef ] of {
               nil -> error( 'The business object ' ++ refClassName ++ '#' ++ eidRef
                 ++ ' lost, referenced via ' ++ attrKey ++ ' by ' ++ boClassName
                 ++ '#' ++ eid )

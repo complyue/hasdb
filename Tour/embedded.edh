@@ -1,5 +1,5 @@
 
-import * 'db/demo/basics'
+import * 'db/demo/embedded'
 
 runDbApp( '/var/tmp/demo', DbApp() )
 
