@@ -52,7 +52,7 @@ export class DbApp {
 
     # import some schema - business classes, indices get created - from
     # some lib, with re-exporting
-    export import this * DbLib( db )
+    export import * DbLib( db ) into this
 
     # define more business classes, create more top-level indices, etc.
     # ...
