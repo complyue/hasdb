@@ -2,10 +2,9 @@
 import * 'db'
 import * 'db/machinery'
 
-
 # as `import` in Edh can have an object as the source, some object can
-# serve as a parameteric *module*, with nested classes, methods and/or
-# other procedures, those to be `import`ed into another app/lib
+# serve as a parameteric *module*, with nested namespaces, classes, methods
+# and/or other procedures, those to be `import`ed into another app/lib
 # instance's scope.
 
 export class DbLib {
@@ -13,12 +12,12 @@ export class DbLib {
   # requires an effective `DataBack` instance for each instance of this lib
   method __init__ ( db as this.db ) {
 
-    # create top-level indices wrt all business object classes provided by
+    # create global indices wrt all business object classes provided by
     # this lib
+    db.createIndex( expr personByName, Person, expr name:ASC )
     db.createIndex( expr deptByName, Depart, expr (
         name:ASC,
-    ), unique=true )
-    db.createIndex( expr personByName, Person, expr name:ASC )
+      ), unique=true )
 
   }
 
@@ -152,10 +151,12 @@ export class DbLib {
   {#
    # A relationship business class
    #}
-  export class WorkFor { method __init__(
+  export class WorkFor {
+    method __init__(
       person as this.person,
       depart as this.depart,
       salary as this.salary,
-  ) extends db.superBack() }
+    ) extends db.superBack()
+  }
 
 }

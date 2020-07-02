@@ -257,7 +257,9 @@ export class DataBack {
     bocIndices = this._indices[ boClass ] |> None
     touchedIndices = {} # collect touched global indices by attr
     persistAttrs = []
-    for ( attrKey, attrVal ) from sb._boScope.attrs() do case attrVal of {
+    for ( attrKey, attrVal ) from sb._boScope.attrs()
+    do | type( attrKey ) == StringType # treat all symbolic attrs as transient
+    -> case attrVal of {
       # referencing another business object, settle the relationship
       { { SuperBack: sbRef } } -> {
         this._settle_rel( bo, sb, attrKey, attrVal, sbRef )
@@ -287,11 +289,11 @@ export class DataBack {
 
     # put into global extent
     case this._extents[ boClass ] of {
-      nil -> this._extents[ boClass ] = {
-        sb.eid: bo
-      }
       { boExtent } -> {
         boExtent[ sb.eid ] = bo
+      }
+      this._extents[ boClass ] = {
+        sb.eid: bo
       }
     }
 
@@ -660,6 +662,9 @@ export class SuperBack {
   # (*<-@) handles `obj.xxx = yyy` for `obj` being a business child (referred to by `that`)
 
   method (*<-@) ( attrKey, attrVal ) {
+    # treat all symbolic attrs as transient
+    type( attrKey ) != StringType -> that@attrKey = attrVal
+
     case that?@attrKey of { attrValOld } -> {
       if attrValOld == attrVal then {
         return attrVal # no value change, nop
