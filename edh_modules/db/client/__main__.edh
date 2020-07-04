@@ -39,8 +39,8 @@ perceive peer.armChannel( conin := 0 ) {
 # channel 1 is named `conout` by convention, commands through it are
 # directed to `console.print()`
 perceive peer.armChannel( conout := 1 ) { conOut } -> {
-  ; | ArgsPackType == type( conOut ) -> {
-    console.print( ***conOut )
+  ; | type( conOut ) is ArgsPackType -> {
+    console.print(*** conOut )
   }
   console.print( conOut )
 }
@@ -69,7 +69,7 @@ db._peer <- peer
 
 {
 
-  while false == peer.eol() {
+  while peer.eol() is false {
     case peer.readCommand() of {
       { cmdVal } -> {
         console.warn<| 'Unexpected peer command from DB service via: '

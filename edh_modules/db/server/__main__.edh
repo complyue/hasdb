@@ -55,7 +55,7 @@ perceive peer.armChannel( errChan ?:= 'err' ) {
 {
 
   # this loop is the intaking pump for rpc commands from the client
-  while false == peer.eol() case peer.readCommand() of {
+  while peer.eol() is false case peer.readCommand() of {
     # all db server commands are expected to return nil result,
     # and ignored here.
     { cmdVal } -> {

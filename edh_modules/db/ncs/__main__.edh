@@ -22,7 +22,7 @@ console.info<| 'DB console client connected - ' ++ peer
     repr( "(dbc)Đ: " )
   )
 
-  while false == peer.eol() { # this is the *Loop* in so-called REPL
+  while peer.eol() is false { # this is the *Loop* in so-called REPL
     # Read+Eval (peer.readCommand) -> Print (peer.print) -> Loop
 
     case peer.readCommand() of {
@@ -63,7 +63,7 @@ console.info<| 'DB console client connected - ' ++ peer
     }
 
   } $=> { cmdExc } -> {
-    if false == peer.eol() then {
+    if peer.eol() is false then {
       peer.p2c(
         2, # direct to channel conmsg := 2
         repr( 'Recovered from error\n  exception=' ++ cmdExc ),

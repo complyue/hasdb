@@ -258,7 +258,7 @@ export class DataBack {
     touchedIndices = {} # collect touched global indices by attr
     persistAttrs = []
     for ( attrKey, attrVal ) from sb._boScope.attrs()
-    do | type( attrKey ) == StringType # treat all symbolic attrs as transient
+    do | type( attrKey ) is StringType # treat all symbolic attrs as transient
     -> case attrVal of {
       # referencing another business object, settle the relationship
       { { SuperBack: sbRef } } -> {
@@ -377,7 +377,7 @@ export class DataBack {
     console.debug<| 'starting dump version ' ++ this._dump_version
 
     method _dumpBo( bo, sb ) {
-      if sb?_dumped_version == this._dump_version then {
+      if sb?_dumped_version is this._dump_version then {
         return nil # this bo already dumped to version
       }
 
@@ -666,7 +666,7 @@ export class SuperBack {
     type( attrKey ) != StringType -> that@attrKey = attrVal
 
     case that?@attrKey of { attrValOld } -> {
-      if attrValOld == attrVal then {
+      if attrValOld is attrVal then {
         return attrVal # no value change, nop
       }
 

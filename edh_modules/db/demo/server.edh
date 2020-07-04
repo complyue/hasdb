@@ -82,7 +82,7 @@ export class DbApp {
  * Note that quiting the process (by Ctrl^D) from within the server, without
    shutting down first, will leave your changes uncommitted.
 '''
-      while false == server.eol() {
+      while server.eol() is false {
         case console.readCommand( ps1= "(dbs)Đ: ", ps2= "Đ| " ) of {
           shutdown -> {
             # shutdown the db app and commit its changes
