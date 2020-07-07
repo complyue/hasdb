@@ -20,14 +20,11 @@ import (
 ) 'db/Storage/InMem'
 
 
-export method className( o ) case constructor( o ) of { cls } -> cls.name
-
-
-# duck-typed KinColection, abstracting concrete implementations:
+# duck-typed KinColection interface, abstracting concrete implementations:
 #  * BoSet    - unordered set
 #  * BoIndex  - sorted by index key attributes, non-unique
 #  * BuIndex  - sorted by index key attributes, unique
-export class KinCollection {
+namespace KinCollection () {
 
   # to enumerate all relatipnship business objects one by one
   generator all() error( 'abstract method' )
@@ -42,52 +39,67 @@ export class KinCollection {
 
 }
 
-export class BoSet {
-  # no ctor arg
-  extends _BoSet()
-
+namespace BoSet'Ducking () {
   # to satisfy the duck typing criteria
   generator groups() {
-    for bo from super.all() do yield ( (), ( bo, ) )
+    for bo from that.all() do yield ( (), ( bo, ) )
   }
   generator range() {
-    for bo from super.all() do yield ( (), bo )
+    for bo from that.all() do yield ( (), bo )
   }
 }
+export class BoSet {
+  extends BoSet'Ducking
+  # no ctor arg
+  extends _BoSet()
+}
 
-export class BoIndex {
-  # pass verbatim ctor args to the super host class
-  method __init__(*** apk ) extends _BoIndex(*** apk )
 
+namespace BoIndex'Ducking () {
   # to satisfy the duck typing criteria
   generator all() {
-    for ( k, g ) from super.groups() do for bo from g do {
+    for ( k, g ) from that.groups() do for bo from g do {
       yield bo
     }
   }
   generator range() {
-    for ( k, g ) from super.groups() do for bo from g do {
+    for ( k, g ) from that.groups() do for bo from g do {
       yield ( k, bo )
     }
   }
 }
-
-export class BuIndex {
+export class BoIndex {
+  extends BoIndex'Ducking
   # pass verbatim ctor args to the super host class
-  method __init__(*** apk ) extends _BuIndex(*** apk )
+  method __init__(*** apk ) {
+    extends _BoIndex(*** apk )
+  }
+}
 
+
+namespace BuIndex'Ducking () {
   # to satisfy the duck typing criteria
   generator all() {
-    for ( k, bo ) from super.range() do {
+    for ( k, bo ) from that.range() do {
       yield bo
     }
   }
   generator groups() {
-    for ( k, bo ) from super.range() do {
+    for ( k, bo ) from that.range() do {
       yield ( k, ( bo, ) )
     }
   }
 }
+export class BuIndex {
+  extends BuIndex'Ducking
+  # pass verbatim ctor args to the super host class
+  method __init__(*** apk ) {
+    extends _BuIndex(*** apk )
+  }
+}
+
+
+export method className( o ) case constructor( o ) of { cls } -> cls.name
 
 # this tells persistent attributes from transient ones
 method hasReConRepr( attrVal ) case attrVal of {
@@ -113,7 +125,7 @@ export method runDbApp( dataDir, dbApp ) {
   # the db app is run.
   sinkBaseDFD = sink
 
-  db = DataBack( dataDir, dbApp )
+  case DataBack( dataDir, dbApp ) of { db } -> { pass }
 
   # the producer procedure to be launched for db app
   producer launchApp( outlet ) {
@@ -197,7 +209,7 @@ export class DataBack {
   extends( DataBackLifecycle() )
 
   # this is to be set upon `runDbApp()`, which calls `db.init()`
-  persistOutlet := None
+  persistOutlet ?= None
 
   method __init__ (
     dataDir as this.dataDir,
@@ -221,11 +233,11 @@ export class DataBack {
   # we mark it with `ai` for extra certain.
   method createIndex( idxAttr, boClass, indexSpec, unique=false ) ai {
     idx = if unique
-    then BuIndex( indexSpec, name= '' ++idxAttr++ '@' ++boClass )
-    else BoIndex( indexSpec, name= '' ++idxAttr++ '@' ++boClass )
+    then BuIndex( indexSpec )
+    else BoIndex( indexSpec )
     bocIndices = this._indices[ boClass ] |> (
       this._indices[ boClass ] = {} )
-    for keyAttr from idx.keys do idx => (
+    for keyAttr from idx.keys() do idx => (
       bocIndices[ keyAttr ] |> (
         bocIndices[ keyAttr ] = [] )
     )
@@ -298,7 +310,7 @@ export class DataBack {
     }
 
     # index into all touched global indices
-    for ( boi, _ ) from touchedIndices do boi.(<-) ( bo )
+    for ( boi, _ ) from touchedIndices do boi <- bo
 
     if this._dump_version >= 0 then {
       # persist all attributes of the new business object
@@ -318,7 +330,7 @@ export class DataBack {
       # re-index to the global index if any touched
       case this._indices[ constructor( bo ) ] of { bocIndices } -> {
         case bocIndices[ attrKey ] of { bois } -> {
-          for boi from bois do boi.(<-) ( bo )
+          for boi from bois do boi <- bo
         }
       }
 
@@ -349,7 +361,7 @@ export class DataBack {
     case sb._kins[ constructor( boRel ) : ( '' ++ refAttr ) ] of { kin } -> {
 
 
-      kin.(<-) ( boRel )
+      kin <- boRel
     }
     if this._dump_version >= 0 then {
       # persist the new relationship
@@ -363,7 +375,7 @@ export class DataBack {
   method _cleanup_rel( boRel, sbRel, refAttr, boOld, sbOld ) {
     # throw away reverse reference on the referee sb's kin index/set if any
     case sbOld._kins[ constructor( boRel ) : ( '' ++ refAttr ) ] of { kin } -> {
-      kin.(^*) ( boRel )
+      kin ^* boRel
     }
   }
 
@@ -458,7 +470,7 @@ export class DataBack {
     }
 
     # throw away from all touched global indices
-    for ( boi, _ ) from touchedIndices do boi.(^*) ( bo )
+    for ( boi, _ ) from touchedIndices do boi ^* bo
 
     if persist then {
       # persist the log
@@ -558,7 +570,7 @@ export class DataBack {
           this._settle_rel( bo, sb, attrKey, boRef, sbRef )
         }
         # re-index into all touched global indices
-        for ( boi, _ ) from touchedIndices do boi.(<-) ( bo )
+        for ( boi, _ ) from touchedIndices do boi <- bo
       }
 
       error( 'bug: unsupported persistent record pattern'
@@ -609,11 +621,9 @@ export class SuperBack {
   method createKinIndex (
     kinAttr, relClass, relAttr, indexSpec, unique=false,
   ) {
-    idxName = kinAttr ++ '@' ++ className( that ) ++ '<-' ++ relClass
-    ++ '.' ++ relAttr
     idx = if unique
-    then BuIndex( indexSpec, name=idxName )
-    else BoIndex( indexSpec, name=idxName )
+    then BuIndex( indexSpec )
+    else BoIndex( indexSpec )
     # chain the 2 assignments into single transaction
     this._kins[ relClass : ( '' ++ relAttr ) ] = (
       # will be available from `that` as super attr

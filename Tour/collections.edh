@@ -1,5 +1,5 @@
 
-case import (**_ ) 'db/Storage/InMem' of { modu } -> shellWith( modu )
+case import (** _ ) 'db/Storage/InMem' of { modu } -> shellWith( modu )
 
 {
   class BO {
@@ -19,11 +19,11 @@ case import (**_ ) 'db/Storage/InMem' of { modu } -> shellWith( modu )
 
 bos = BoSet()
 
-bos.(<-) ( bo1 )
-bos.(<-) ( bo2 )
-bos.(<-) ( bo3 )
+bos <- bo1
+bos <- bo2
+bos <- bo3
 
-bos.(^*) ( bo2 )
+bos ^* bo1
 
 for bo from bos.all() do console.print( 'got bo in set: ', bo=bo )
 
@@ -34,8 +34,8 @@ for bo from bos.all() do console.print( 'got bo in set: ', bo=bo )
       a, b:DESC, c:ASC,
   ) )
 }
-bui.spec
-bui.keys
+bui.spec()
+bui.keys()
 
 {
   indexSpec = [ # this list to be generated from cfg etc.
@@ -44,23 +44,23 @@ bui.keys
   # this form more concise to write programmatically
   boi = BoIndex( indexSpec )
 }
-boi.spec
-boi.keys
+boi.spec()
+boi.keys()
 
 
-bui.(<-) ( bo1 )
-bui.(<-) ( bo2 )
+bui <- bo1
+bui <- bo2
 # should fall as violating unique constraint
-bui.(<-) ( bo3 )
+bui <- bo3
 
 bui[ 1, 2, 3 ]
 
 for ( ik, bo ) from bui.range() do console.info<| 'unique one: ' ++ ik ++ ' - ' ++ bo
 
 
-boi.(<-) ( bo1 )
-boi.(<-) ( bo2 )
-boi.(<-) ( bo3 )
+boi <- bo1
+boi <- bo2
+boi <- bo3
 
 boi[ 1, 2, 3 ]
 

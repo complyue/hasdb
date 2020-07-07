@@ -1,5 +1,5 @@
 
-module DB.Batteries
+module DB.EHI
   ( installDbBatteries
   , module DB.Array
   )
@@ -10,6 +10,8 @@ import           Prelude
 
 import           Control.Monad.Reader
 
+import           Control.Exception
+
 import qualified Data.HashMap.Strict           as Map
 
 import           DB.RT
@@ -18,25 +20,39 @@ import           DB.Storage.InMem
 
 import           Language.Edh.EHI
 
+import           Dim.EHI
+
 
 installDbBatteries :: EdhWorld -> IO ()
 installDbBatteries !world = do
 
+  installDimBatteries world
+  moduDtypes <- installedEdhModule world "dim/dtypes" >>= \case
+    Nothing    -> throwIO $ TypeError "missing hasdim dtypes module"
+    Just !modu -> return modu
+
+
   -- this host module only used by 'db/machinery'
   void $ installEdhModule world "db/Storage/InMem" $ \pgs exit -> do
+
+    declareEdhOperators world
+                        "<hasdb>"
+                        [
+          -- throw a business object away from a business collection
+                         ("^*", 1)]
 
     let moduScope = contextScope $ edh'context pgs
         modu      = thisObject moduScope
 
-    !moduArts <-
-      sequence
-        $ [ (nm, ) <$> mkHostClass moduScope nm True hc
-          | (nm, hc) <-
-            [ ("BoSet"  , bosHostCtor)
-            , ("BoIndex", boiHostCtor)
-            , ("BuIndex", buiHostCtor)
-            ]
-          ]
+    !moduArts <- sequence
+      [ ((nm, ) <$>) $ mkExtHostClass moduScope nm hc $ \ !classUniq ->
+          createSideEntityManipulater True =<< mths classUniq pgs
+      | (nm, hc, mths) <-
+        [ ("BoSet"  , bosCtor, bosMethods)
+        , ("BoIndex", boiCtor, boiMethods)
+        , ("BuIndex", buiCtor, buiMethods)
+        ]
+      ]
 
     artsDict <- createEdhDict
       $ Map.fromList [ (EdhString k, v) | (k, v) <- moduArts ]
@@ -44,13 +60,17 @@ installDbBatteries !world = do
       $  [ (AttrByName k, v) | (k, v) <- moduArts ]
       ++ [(AttrByName "__exports__", artsDict)]
 
-
     exit
+
 
   -- this host module contains procedures to do persisting to and
   -- restoring from disk, the supporting classes / procedures for
   -- restoration must all be available from this module
   void $ installEdhModule world "db/RT" $ \pgs exit -> do
+
+    defaultDataType <- lookupEntityAttr pgs
+                                        (objEntity moduDtypes)
+                                        (AttrByName "f8")
 
     let moduScope = contextScope $ edh'context pgs
         modu      = thisObject moduScope
@@ -62,10 +82,7 @@ installDbBatteries !world = do
            [ ( EdhMethod
              , "newBo"
              , newBoProc
-             , PackReceiver
-               [ mandatoryArg "boClass"
-               , mandatoryArg "sbEnt"
-               ]
+             , PackReceiver [mandatoryArg "boClass", mandatoryArg "sbEnt"]
              )
            , ( EdhMethod
              , "streamToDisk"
@@ -80,14 +97,13 @@ installDbBatteries !world = do
              , "streamFromDisk"
              , streamFromDiskProc
              , PackReceiver
-               [ mandatoryArg "restoreOutlet"
-               , mandatoryArg "baseDFD"
-               ]
+               [mandatoryArg "restoreOutlet", mandatoryArg "baseDFD"]
              )
            ]
          ]
-      ++ [ (nm, ) <$> mkHostClass moduScope nm True hc
-         | (nm, hc) <- [("DbArray", aryHostCtor)]
+      ++ [ ((nm, ) <$>) $ mkExtHostClass moduScope nm hc $ \ !classUniq ->
+             createSideEntityManipulater True =<< mths classUniq pgs
+         | (nm, hc, mths) <- [("DbArray", aryCtor defaultDataType, aryMethods)]
          ]
 
     artsDict <- createEdhDict

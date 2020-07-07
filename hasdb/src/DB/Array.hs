@@ -1,4 +1,3 @@
-{-# LANGUAGE GADTs #-}
 
 module DB.Array where
 
@@ -13,8 +12,6 @@ import           System.IO.MMap
 
 import           Foreign
 
-import           Control.Monad.Primitive
-import           Control.Monad.Reader
 import           Control.Concurrent.STM
 
 import           Data.List.NonEmpty             ( NonEmpty(..) )
@@ -23,15 +20,13 @@ import qualified Data.List.NonEmpty            as NE
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import qualified Data.HashMap.Strict           as Map
+import           Data.Unique
 import           Data.Dynamic
-
-import qualified Data.Vector.Storable          as I
-import qualified Data.Vector.Storable.Mutable  as M
-
-import           Data.Scientific
 
 import qualified Data.Lossless.Decimal         as D
 import           Language.Edh.EHI
+
+import           Dim.EHI
 
 
 -- | The shape of an array is named dimensions with size of each
@@ -109,34 +104,19 @@ flatIndexInShape !pgs !idxs (ArrayShape !shape) !exit =
   flatIdx _ _ _ = throwEdhSTM pgs UsageError "Invalid index"
 
 
--- | The meta data about an array
-data ArrayMeta = ArrayMeta {
-      dbArrayPath :: !Text        -- ^ data file path relative to data root dir
-    , dbArrayShape :: !ArrayShape -- ^ shape of dimensions
-    , dbArrayLen1d :: !Int        -- ^ valid length of 1st dimension
-  } deriving (Eq, Show, Typeable)
-
-
-data DbArray e where {
-    DbArray ::(Storable e, Num e) => ArrayMeta -> ForeignPtr e -> DbArray e
-  } deriving (Typeable)
-
-arrayMeta :: (Storable e, Num e) => DbArray e -> ArrayMeta
-arrayMeta (DbArray !meta _) = meta
-
-arrayFlatVector :: (Storable e, Num e) => DbArray e -> I.Vector e
-arrayFlatVector (DbArray (ArrayMeta _ !shape _) !fptr) =
-  I.unsafeFromForeignPtr fptr 0 (dbArraySize shape)
-
-arrayFlatMVector
-  :: (Storable e, Num e) => DbArray e -> M.MVector (PrimState IO) e
-arrayFlatMVector (DbArray (ArrayMeta _ !shape _) !fptr) =
-  M.unsafeFromForeignPtr fptr 0 (dbArraySize shape)
-
+data DbArray where
+  DbArray ::(Storable a, EdhXchg a) => {
+      db'array'path  :: !Text           -- ^ data file path relative to root
+    , db'array'shape :: !ArrayShape     -- ^ shape of dimensions
+    , db'array'dtype :: !(DataType a)   -- ^ dtype
+    , db'array'dto   :: !Object         -- ^ dtype object, favor Edh
+    , db'array'store :: !(FlatArray a)  -- ^ flat storage
+    , db'array'len1d :: !(TVar Int)     -- ^ valid length of 1st dimension
+    } -> DbArray
+  deriving (Typeable)
 
 -- | unwrap an array from Edh object form
-unwrapArrayObject
-  :: forall e . (Typeable e) => Object -> STM (Maybe (DbArray e))
+unwrapArrayObject :: Object -> STM (Maybe DbArray)
 unwrapArrayObject !ao = fromDynamic <$> readTVar (entity'store $ objEntity ao)
 
 
@@ -144,151 +124,51 @@ unwrapArrayObject !ao = fromDynamic <$> readTVar (entity'store $ objEntity ao)
 --     reliable when rapidly retried with the result possibly discarded
 -- TODO battle test this impl.
 mmapArray
-  :: forall e . (Storable e, Num e) => Text -> ArrayMeta -> IO (DbArray e)
-mmapArray !dataDir meta@(ArrayMeta dataPath shape _) = do
+  :: (Storable a, EdhXchg a)
+  => Text
+  -> Text
+  -> ArrayShape
+  -> DataType a
+  -> Object
+  -> Int
+  -> IO DbArray
+mmapArray !dataDir !dataPath !shape !dtype !dto !len1d = do
   let !dataFilePath = T.unpack dataDir </> T.unpack (dataPath <> ".edf")
       !dataFileDir  = takeDirectory dataFilePath
+      !cap          = dbArraySize shape
   createDirectoryIfMissing True dataFileDir
-  (fptr, _, _) <- mmapFileForeignPtr dataFilePath ReadWriteEx
-    $ Just (0, dbArraySize shape * sizeOf (undefined :: e))
-  return $ DbArray meta fptr
-
-readFloatingArray
-  :: (Storable a, RealFloat a)
-  => EdhProgState
-  -> DbArray a
-  -> [EdhValue]
-  -> (Decimal -> STM ())
-  -> STM ()
-readFloatingArray !pgs !ary !idxs !exit =
-  flatIndexInShape pgs idxs (dbArrayShape $ arrayMeta ary) $ \flatIdx -> do
-    let flatVec = arrayFlatVector ary
-        ev      = I.unsafeIndex flatVec flatIdx
-        rv :: Decimal
-        rv = D.decimalFromScientific $ fromFloatDigits ev
-    exit rv
-
-writeFloatingArray
-  :: (Storable a, RealFloat a)
-  => EdhProgState
-  -> DbArray a
-  -> [EdhValue]
-  -> a
-  -> (Decimal -> STM ())
-  -> STM ()
-writeFloatingArray !pgs !ary !idxs !ev !exit =
-  flatIndexInShape pgs idxs (dbArrayShape $ arrayMeta ary) $ \flatIdx -> do
-    let flatVec = arrayFlatMVector ary
-        rv :: Decimal
-        rv = D.decimalFromScientific $ fromFloatDigits ev
-    unsafeIOToSTM $ M.unsafeWrite flatVec flatIdx ev
-    exit rv
-
-readIntArray
-  :: (Storable a, Integral a)
-  => EdhProgState
-  -> DbArray a
-  -> [EdhValue]
-  -> (Decimal -> STM ())
-  -> STM ()
-readIntArray !pgs !ary !idxs !exit =
-  flatIndexInShape pgs idxs (dbArrayShape $ arrayMeta ary) $ \flatIdx -> do
-    let flatVec = arrayFlatVector ary
-        ev      = I.unsafeIndex flatVec flatIdx
-        rv :: Decimal
-        rv = fromIntegral ev
-    exit rv
-
-writeIntArray
-  :: (Storable a, Integral a)
-  => EdhProgState
-  -> DbArray a
-  -> [EdhValue]
-  -> a
-  -> (Decimal -> STM ())
-  -> STM ()
-writeIntArray !pgs !ary !idxs !ev !exit =
-  flatIndexInShape pgs idxs (dbArrayShape $ arrayMeta ary) $ \flatIdx -> do
-    let flatVec = arrayFlatMVector ary
-        rv :: Decimal
-        rv = fromIntegral ev
-    unsafeIOToSTM $ M.unsafeWrite flatVec flatIdx ev
-    exit rv
-
-
-type DbF8Array = DbArray Double
-type DbF4Array = DbArray Float
-type DbI8Array = DbArray Int64
+  (fp, _, _) <- mmapFileForeignPtr dataFilePath ReadWriteEx
+    $ Just (0, cap * data'element'size dtype)
+  len1dVar <- atomically $ newTVar len1d
+  return $ DbArray { db'array'path  = dataPath
+                   , db'array'shape = shape
+                   , db'array'dtype = dtype
+                   , db'array'dto   = dto
+                   , db'array'store = FlatArray cap fp
+                   , db'array'len1d = len1dVar
+                   }
 
 
 -- | host constructor DbArray(dataDir, dataPath, shape, dtype='f8', len1d=0)
-aryHostCtor
-  :: EdhProgState
-  -> ArgsPack  -- ctor args, if __init__() is provided, will go there too
-  -> TVar (Map.HashMap AttrKey EdhValue)  -- out-of-band attr store
-  -> (Dynamic -> STM ())  -- in-band data to be written to entity store
-  -> STM ()
-aryHostCtor !pgsCtor !apk !obs !ctorExit =
-  case parseArgsPack ("", "", nil, "f8", 0 :: Int) ctorArgsParser apk of
+aryCtor :: EdhValue -> EdhHostCtor
+aryCtor !defaultDtype !pgsCtor !apk !ctorExit =
+  case parseArgsPack ("", "", nil, defaultDtype, 0 :: Int) ctorArgsParser apk of
     Left err -> throwEdhSTM pgsCtor UsageError err
-    Right (dataDir, dataPath, shapeVal, dtype, len1d) ->
+    Right (dataDir, dataPath, shapeVal, dtov, len1d) ->
       if dataDir == "" || dataPath == ""
         then throwEdhSTM pgsCtor UsageError "Missing dataDir/dataPath"
-        else parseArrayShape pgsCtor shapeVal $ \shape -> do
-          let
-            !scope = contextScope $ edh'context pgsCtor
-            doIt !dary = do
-              methods <- sequence
-                [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
-                | (nm, vc, hp, mthArgs) <-
-                  [ ( "[]"
-                    , EdhMethod
-                    , aryIdxReadProc
-                    , PackReceiver [mandatoryArg "idx"]
-                    )
-                  , ( "[=]"
-                    , EdhMethod
-                    , aryIdxWriteProc
-                    , PackReceiver [mandatoryArg "idx", mandatoryArg "val"]
-                    )
-                  , ("__repr__", EdhMethod, aryReprProc, PackReceiver [])
-                  , ("all"     , EdhGnrtor, aryAllProc , PackReceiver [])
-                  ]
-                ]
-              modifyTVar' obs
-                $  Map.union
-                $  Map.fromList
-                $  methods
-                ++ [ (AttrByName "path" , EdhString dataPath)
-                   , (AttrByName "shape", edhArrayShape shape)
-                   , (AttrByName "dtype", EdhString dtype)
-                   , (AttrByName "len1d", EdhDecimal $ fromIntegral len1d)
-                   , ( AttrByName "size"
-                     , EdhDecimal $ fromIntegral $ dbArraySize shape
-                     )
-                   ]
-              ctorExit dary
-          case dtype of
-            "f8" -> do
-              ary :: DbF8Array <- unsafeIOToSTM $ mmapArray dataDir $ ArrayMeta
-                dataPath
-                shape
-                len1d
-              doIt $ toDyn ary
-            "f4" -> do
-              ary :: DbF4Array <- unsafeIOToSTM $ mmapArray dataDir $ ArrayMeta
-                dataPath
-                shape
-                len1d
-              doIt $ toDyn ary
-            "i8" -> do
-              ary :: DbI8Array <- unsafeIOToSTM $ mmapArray dataDir $ ArrayMeta
-                dataPath
-                shape
-                len1d
-              doIt $ toDyn ary
-            _ ->
-              throwEdhSTM pgsCtor UsageError $ "Unsupported dtype: " <> dtype
+        else parseArrayShape pgsCtor shapeVal $ \ !shape -> case dtov of
+          EdhObject !dto ->
+            fromDynamic <$> readTVar (entity'store $ objEntity dto) >>= \case
+              Nothing ->
+                throwEdhSTM pgsCtor UsageError $ "Invalid dtype: " <> T.pack
+                  (show dto)
+              Just (ConcreteDataType _ !dt) -> do
+                ary <- unsafeIOToSTM
+                  $ mmapArray dataDir dataPath shape dt dto len1d
+                ctorExit $ toDyn ary
+          _ -> throwEdhSTM pgsCtor UsageError $ "Bad dtype: " <> T.pack
+            (edhTypeNameOf dtov)
  where
   ctorArgsParser =
     ArgsPackParser
@@ -302,13 +182,20 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
           _ -> Left "Invalid dataPath"
         , \arg (dataDir', dataPath', _, dtype', len1d') ->
           Right (dataDir', dataPath', arg, dtype', len1d')
+        , \arg (dataDir', dataPath', shape', _, len1d') ->
+          case edhUltimate arg of
+            dto@EdhObject{} -> Right (dataDir', dataPath', shape', dto, len1d')
+            !badDtype ->
+              Left $ "Bad dtype: " <> T.pack (edhTypeNameOf badDtype)
         ]
       $ Map.fromList
           [ ( "dtype"
-            , \arg (dataDir', dataPath', shape', _, len1d') -> case arg of
-              EdhString dtype ->
-                Right (dataDir', dataPath', shape', dtype, len1d')
-              _ -> Left "Invalid dtype object"
+            , \arg (dataDir', dataPath', shape', _, len1d') ->
+              case edhUltimate arg of
+                dto@EdhObject{} ->
+                  Right (dataDir', dataPath', shape', dto, len1d')
+                !badDtype ->
+                  Left $ "Bad dtype: " <> T.pack (edhTypeNameOf badDtype)
             )
           , ( "len1d"
             , \arg (dataDir', dataPath', shape', dtype', _) -> case arg of
@@ -320,200 +207,105 @@ aryHostCtor !pgsCtor !apk !obs !ctorExit =
             )
           ]
 
+aryMethods :: Unique -> EdhProgState -> STM [(AttrKey, EdhValue)]
+aryMethods !classUniq !pgsModule =
+  sequence
+    $  [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp mthArgs
+       | (nm, vc, hp, mthArgs) <-
+         [ ("[]", EdhMethod, aryIdxReadProc, PackReceiver [mandatoryArg "idx"])
+         , ( "[=]"
+           , EdhMethod
+           , aryIdxWriteProc
+           , PackReceiver [mandatoryArg "idx", mandatoryArg "val"]
+           )
+         , ("__repr__", EdhMethod, aryReprProc, PackReceiver [])
+         ]
+       ]
+    ++ [ (AttrByName nm, ) <$> mkHostProperty scope nm getter setter
+       | (nm, getter, setter) <-
+         [ ("path" , aryPathGetter , Nothing)
+         , ("shape", aryShapeGetter, Nothing)
+         , ("dtype", aryDtypeGetter, Nothing)
+         , ("len1d", aryLen1dGetter, Nothing)
+         , ("size" , arySizeGetter , Nothing)
+         ]
+       ]
+ where
+  !scope = contextScope $ edh'context pgsModule
+
+  aryPathGetter :: EdhProcedure
+  aryPathGetter _ !exit = withEntityOfClass classUniq
+    $ \ !pgs !ary -> exitEdhSTM pgs exit $ EdhString $ db'array'path ary
+
+  aryShapeGetter :: EdhProcedure
+  aryShapeGetter _ !exit = withEntityOfClass classUniq
+    $ \ !pgs !ary -> exitEdhSTM pgs exit $ edhArrayShape $ db'array'shape ary
+
+  aryDtypeGetter :: EdhProcedure
+  aryDtypeGetter _ !exit = withEntityOfClass classUniq
+    $ \ !pgs !ary -> exitEdhSTM pgs exit $ EdhObject $ db'array'dto ary
+
+  aryLen1dGetter :: EdhProcedure
+  aryLen1dGetter _ !exit = withEntityOfClass classUniq $ \ !pgs !ary ->
+    readTVar (db'array'len1d ary)
+      >>= \ !len1d -> exitEdhSTM pgs exit $ EdhDecimal $ fromIntegral len1d
+
+  arySizeGetter :: EdhProcedure
+  arySizeGetter _ !exit = withEntityOfClass classUniq $ \ !pgs !ary ->
+    exitEdhSTM pgs exit
+      $ EdhDecimal
+      $ fromIntegral
+      $ dbArraySize
+      $ db'array'shape ary
+
   aryIdxReadProc :: EdhProcedure
-  aryIdxReadProc (ArgsPack !args _) !exit = do
-    pgs <- ask
-    let this = thisObject $ contextScope $ edh'context pgs
-        es   = entity'store $ objEntity this
-    contEdhSTM $ do
-      esd <- readTVar es
-      case fromDynamic esd of
-        Nothing -> case fromDynamic esd of
-          Nothing -> case fromDynamic esd of
-            Nothing ->
-              throwEdhSTM pgs UsageError
-                $  "bug: this is not an ary : "
-                <> T.pack (show esd)
-            Just (ary :: DbI8Array) -> case args of
-              -- TODO support slicing, of coz need to tell a slicing index from
-              --      an element index first
-              [EdhArgsPack (ArgsPack !idxs _)] -> readIntArray pgs ary idxs
-                $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
-              idxs -> readIntArray pgs ary idxs
-                $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
-          Just (_ary :: DbF4Array) ->
-            throwEdhSTM pgs UsageError "dtype=f4 not impl. yet"
-        Just (ary :: DbF8Array) -> case args of
+  aryIdxReadProc (ArgsPack !args _) !exit =
+    withEntityOfClass classUniq
+      $ \ !pgs (DbArray _ !shape !dt _dto !fa _l1dv) -> case args of
           -- TODO support slicing, of coz need to tell a slicing index from
           --      an element index first
-          [EdhArgsPack (ArgsPack !idxs _)] -> readFloatingArray pgs ary idxs
-            $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
-          idxs -> readFloatingArray pgs ary idxs
-            $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
+          [EdhArgsPack (ArgsPack !idxs _)] ->
+            flatIndexInShape pgs idxs shape $ \ !flatIdx ->
+              read'flat'array'cell dt pgs flatIdx fa
+                $ \ !rv -> exitEdhSTM pgs exit rv
+          idxs -> flatIndexInShape pgs idxs shape $ \ !flatIdx ->
+            read'flat'array'cell dt pgs flatIdx fa
+              $ \ !rv -> exitEdhSTM pgs exit rv
+
 
   aryIdxWriteProc :: EdhProcedure
-  aryIdxWriteProc (ArgsPack !args _) !exit = do
-    pgs <- ask
-    let this = thisObject $ contextScope $ edh'context pgs
-        es   = entity'store $ objEntity this
-    contEdhSTM $ do
-      esd <- readTVar es
-      case fromDynamic esd of
-        Nothing -> case fromDynamic esd of
-          Nothing -> case fromDynamic esd of
-            Nothing ->
-              throwEdhSTM pgs UsageError
-                $  "bug: this is not an ary : "
-                <> T.pack (show esd)
-            Just (ary :: DbI8Array) -> case args of
-              -- TODO support slicing assign, of coz need to tell a slicing index
-              --      from an element index first
-              [EdhArgsPack (ArgsPack !idxs _), EdhDecimal !dv] ->
-                case D.decimalToInteger dv of
-                  Nothing ->
-                    throwEdhSTM pgs UsageError $ "Invalid integer: " <> T.pack
-                      (show dv)
-                  Just !iv -> do
-                    let (ev :: Int64) = fromInteger iv
-                    writeIntArray pgs ary idxs ev
-                      $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
-              [idx, EdhDecimal !dv] -> case D.decimalToInteger dv of
-                Nothing ->
-                  throwEdhSTM pgs UsageError $ "Invalid integer: " <> T.pack
-                    (show dv)
-                Just !iv -> do
-                  let (ev :: Int64) = fromInteger iv
-                  writeIntArray pgs ary [idx] ev
-                    $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
-              -- TODO more friendly error msg
-              _ -> throwEdhSTM pgs UsageError "Invalid index assign args"
-          Just (_ary :: DbF4Array) ->
-            throwEdhSTM pgs UsageError "dtype=f4 not impl. yet"
-        Just (ary :: DbF8Array) -> case args of
+  aryIdxWriteProc (ArgsPack !args _) !exit =
+    withEntityOfClass classUniq
+      $ \ !pgs (DbArray _ !shape !dt _dto !fa _l1dv) -> case args of
           -- TODO support slicing assign, of coz need to tell a slicing index
           --      from an element index first
-          [EdhArgsPack (ArgsPack !idxs _), EdhDecimal !dv] -> do
-            let ev :: Double
-                ev = fromRational $ toRational dv
-            writeFloatingArray pgs ary idxs ev
-              $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
-          [idx, EdhDecimal !dv] -> do
-            let ev :: Double
-                ev = fromRational $ toRational dv
-            writeFloatingArray pgs ary [idx] ev
-              $ \rv -> exitEdhSTM pgs exit $ EdhDecimal rv
+          [EdhArgsPack (ArgsPack !idxs _), !dv] ->
+            flatIndexInShape pgs idxs shape $ \ !flatIdx ->
+              write'flat'array'cell dt pgs dv flatIdx fa
+                $ \ !rv -> exitEdhSTM pgs exit rv
+          [idx, !dv] -> flatIndexInShape pgs [idx] shape $ \ !flatIdx ->
+            write'flat'array'cell dt pgs dv flatIdx fa
+              $ \ !rv -> exitEdhSTM pgs exit rv
           -- TODO more friendly error msg
           _ -> throwEdhSTM pgs UsageError "Invalid index assign args"
 
   aryReprProc :: EdhProcedure
-  aryReprProc _ !exit = do
-    pgs <- ask
-    let this = thisObject $ contextScope $ edh'context pgs
-        es   = entity'store $ objEntity this
-    contEdhSTM $ do
-      esd <- readTVar es
-      case fromDynamic esd of
-        Nothing -> case fromDynamic esd of
-          Nothing -> case fromDynamic esd of
-            Nothing ->
-              throwEdhSTM pgs UsageError
-                $  "bug: this is not an ary : "
-                <> T.pack (show esd)
-            Just ((DbArray (ArrayMeta !path !shape !len1d) _) :: DbI8Array) ->
-              exitEdhSTM pgs exit
-                $  EdhString
-                $  "db.Array("
-                <> T.pack (show path)
-                <> ", "
-                <> T.pack (show shape)
-                <> ", dtype='i8', len1d="
-                <> T.pack (show len1d)
-                <> ")"
-          Just ((DbArray (ArrayMeta !path !shape !len1d) _) :: DbF4Array) ->
-            exitEdhSTM pgs exit
-              $  EdhString
-              $  "db.Array("
-              <> T.pack (show path)
-              <> ", "
-              <> T.pack (show shape)
-              <> ", dtype='f4', len1d="
-              <> T.pack (show len1d)
-              <> ")"
-        Just ((DbArray (ArrayMeta !path !shape !len1d) _) :: DbF8Array) ->
-          exitEdhSTM pgs exit
-            $  EdhString
-            $  "db.Array("
-            <> T.pack (show path)
-            <> ", "
-            <> T.pack (show shape)
-            <> ", dtype='f8', len1d="
-            <> T.pack (show len1d)
-            <> ")"
-
-  aryAllProc :: EdhProcedure
-  aryAllProc _ !exit = do
-    pgs <- ask
-    case generatorCaller $ edh'context pgs of
-      Nothing -> throwEdh UsageError "Can only be called as generator"
-      Just (!pgs', !iter'cb) -> contEdhSTM $ do
-        let this = thisObject $ contextScope $ edh'context pgs
-            !es  = entity'store $ objEntity this
-        esd <- readTVar es
-        case fromDynamic esd of
-          Nothing -> case fromDynamic esd of
-            Nothing -> case fromDynamic esd of
-              Nothing ->
-                throwEdhSTM pgs UsageError
-                  $  "bug: this is not an ary : "
-                  <> T.pack (show esd)
-              Just (ary :: DbI8Array) -> do
-                let
-                  flatVec = arrayFlatVector ary
-                  flatLen = I.length flatVec
-                  -- TODO yield ND index instead of flat index
-                  yieldResults :: Int -> STM ()
-                  yieldResults !i = if i >= flatLen
-                    then exitEdhSTM pgs exit nil
-                    else
-                      let ev = I.unsafeIndex flatVec i
-                      in
-                        runEdhProc pgs'
-                        $ iter'cb
-                            (EdhArgsPack
-                              (ArgsPack
-                                [ EdhDecimal $ fromIntegral i
-                                , EdhDecimal $ fromIntegral ev
-                                ]
-                                mempty
-                              )
-                            )
-                        $ \_ -> yieldResults (i + 1)
-                yieldResults 0
-            Just (_ary :: DbF4Array) ->
-              throwEdhSTM pgs UsageError "dtype=f4 not impl. yet"
-          Just (ary :: DbF8Array) -> do
-            let
-              flatVec = arrayFlatVector ary
-              flatLen = I.length flatVec
-              -- TODO yield ND index instead of flat index
-              yieldResults :: Int -> STM ()
-              yieldResults !i = if i >= flatLen
-                then exitEdhSTM pgs exit nil
-                else
-                  let ev = I.unsafeIndex flatVec i
-                  in
-                    runEdhProc pgs'
-                    $ iter'cb
-                        (EdhArgsPack
-                          (ArgsPack
-                            [ EdhDecimal $ fromIntegral i
-                            , EdhDecimal
-                            $ D.decimalFromScientific
-                            $ fromFloatDigits ev
-                            ]
-                            mempty
-                          )
-                        )
-                    $ \_ -> yieldResults (i + 1)
-            yieldResults 0
+  aryReprProc _ !exit =
+    withEntityOfClass classUniq
+      $ \ !pgs (DbArray !path !shape _dt !dto _fa !l1dv) ->
+          readTVar l1dv >>= \ !len1d ->
+            fromDynamic <$> readTVar (entity'store $ objEntity dto) >>= \case
+              Nothing -> error "bug: bad dto"
+              Just (ConcreteDataType !dtr _) ->
+                exitEdhSTM pgs exit
+                  $  EdhString
+                  $  "db.Array("
+                  <> T.pack (show path)
+                  <> ", "
+                  <> T.pack (show shape)
+                  <> ", dtype="
+                  <> dtr
+                  <> ", len1d="
+                  <> T.pack (show len1d)
+                  <> ")"
 

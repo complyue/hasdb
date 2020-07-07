@@ -8,6 +8,11 @@ import (
 
 export class DbClient {
 
+  client :: Client
+
+  property$
+  method client () None
+
   _peer = sink
 
   method __init__ (
@@ -21,9 +26,13 @@ export class DbClient {
       addr, port,
       init=this.__peer_init__,
     ) of { clnt } -> {
+
+      property$ method client () clnt
+
       go { # clear the peer anyway after network disconnected
         clnt.join() @=> this._peer <- None
       }
+
       # addrs() waits until the connection is made or failed
       case clnt.addrs() of {
         { addr => _ } -> console.info<| 'Connected to DB via: ' ++ addr
@@ -31,10 +40,16 @@ export class DbClient {
         # in case clnt.join() didn't throw, though unlikely
         error( 'Can not connect to db.' )
       }
-      # to inherit eol()/join()/stop() etc.
-      extends clnt
+
     }
   }
+
+  # Client and other host classes from `net` are not extensible atm,
+  # delegate these useful method for the time being
+  method eol () this.client.eol()
+  method join () this.client.join()
+  method stop () this.client.stop()
+
 
   method __peer_init__() {
     that.db = this
@@ -44,7 +59,7 @@ export class DbClient {
   method peer() latestEvent( this._peer )
 
   # this makes `db.Array(...)` eval right at the client site
-  method Array ( ***apk ) {
+  method Array (*** apk ) {
     DbArray( this.dataDir, ***apk )
   }
 

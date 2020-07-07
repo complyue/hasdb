@@ -22,7 +22,7 @@ source-repository head
 
 library
     exposed-modules:
-        DB.Batteries
+        DB.EHI
     hs-source-dirs: pub
     default-language: Haskell2010
     default-extensions: NoImplicitPrelude OverloadedStrings LambdaCase
@@ -30,6 +30,7 @@ library
     ghc-options: -Wall
     build-depends:
         hasdb-internal -any,
+        hasdim -any,
         base >=4.12,
         stm >=2.5,
         text -any,
@@ -72,10 +73,12 @@ library hasdb-internal
     default-language: Haskell2010
     default-extensions: NoImplicitPrelude OverloadedStrings LambdaCase
                         BangPatterns TupleSections ScopedTypeVariables
+                        GADTs
     ghc-options: -Wall
     build-depends:
         base >=4.12,
         stm >=2.5,
+        hasdim -any,
         nedh -any,
         edh -any,
         lossless-decimal -any,
