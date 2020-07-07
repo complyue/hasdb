@@ -163,7 +163,7 @@ aryCtor !defaultDtype !pgsCtor !apk !ctorExit =
               Nothing ->
                 throwEdhSTM pgsCtor UsageError $ "Invalid dtype: " <> T.pack
                   (show dto)
-              Just (ConcreteDataType _ !dt) -> do
+              Just (ConcreteDataType !dt) -> do
                 ary <- unsafeIOToSTM
                   $ mmapArray dataDir dataPath shape dt dto len1d
                 ctorExit $ toDyn ary
@@ -296,7 +296,7 @@ aryMethods !classUniq !pgsModule =
           readTVar l1dv >>= \ !len1d ->
             fromDynamic <$> readTVar (entity'store $ objEntity dto) >>= \case
               Nothing -> error "bug: bad dto"
-              Just (ConcreteDataType !dtr _) ->
+              Just (ConcreteDataType !dt) ->
                 exitEdhSTM pgs exit
                   $  EdhString
                   $  "db.Array("
@@ -304,7 +304,7 @@ aryMethods !classUniq !pgsModule =
                   <> ", "
                   <> T.pack (show shape)
                   <> ", dtype="
-                  <> dtr
+                  <> data'type'identifier dt
                   <> ", len1d="
                   <> T.pack (show len1d)
                   <> ")"
