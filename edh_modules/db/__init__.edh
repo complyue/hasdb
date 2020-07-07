@@ -1,6 +1,8 @@
 
 export {
 
+  import * 'dim'
+
   import * './options'
   import * './client'
   import * './server'

@@ -1,5 +1,8 @@
 
 import * 'net'
+
+export import * 'dim'
+
 import (
   DbArray,
   **_ # consume (drop) extra artifacts exported there, don't fail

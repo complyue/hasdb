@@ -120,9 +120,6 @@ unwrapArrayObject :: Object -> STM (Maybe DbArray)
 unwrapArrayObject !ao = fromDynamic <$> readTVar (entity'store $ objEntity ao)
 
 
--- XXX this is called from 'unsafeIOToSTM', and retry prone, has to be solid
---     reliable when rapidly retried with the result possibly discarded
--- TODO battle test this impl.
 mmapArray
   :: (Storable a, EdhXchg a)
   => Text
@@ -131,22 +128,26 @@ mmapArray
   -> DataType a
   -> Object
   -> Int
-  -> IO DbArray
+  -> STM DbArray
 mmapArray !dataDir !dataPath !shape !dtype !dto !len1d = do
-  let !dataFilePath = T.unpack dataDir </> T.unpack (dataPath <> ".edf")
-      !dataFileDir  = takeDirectory dataFilePath
-      !cap          = dbArraySize shape
-  createDirectoryIfMissing True dataFileDir
-  (fp, _, _) <- mmapFileForeignPtr dataFilePath ReadWriteEx
-    $ Just (0, cap * data'element'size dtype)
-  len1dVar <- atomically $ newTVar len1d
-  return $ DbArray { db'array'path  = dataPath
-                   , db'array'shape = shape
-                   , db'array'dtype = dtype
-                   , db'array'dto   = dto
-                   , db'array'store = FlatArray cap fp
-                   , db'array'len1d = len1dVar
-                   }
+  len1dVar <- newTVar len1d
+  unsafeIOToSTM $ do
+-- XXX this is retry prone, has to be solid reliable when rapidly retried
+--     with the result possibly discarded
+-- TODO battle test this impl.
+    let !dataFilePath = T.unpack dataDir </> T.unpack (dataPath <> ".edf")
+        !dataFileDir  = takeDirectory dataFilePath
+        !cap          = dbArraySize shape
+    createDirectoryIfMissing True dataFileDir
+    (fp, _, _) <- mmapFileForeignPtr dataFilePath ReadWriteEx
+      $ Just (0, cap * data'element'size dtype)
+    return $ DbArray { db'array'path  = dataPath
+                     , db'array'shape = shape
+                     , db'array'dtype = dtype
+                     , db'array'dto   = dto
+                     , db'array'store = FlatArray cap fp
+                     , db'array'len1d = len1dVar
+                     }
 
 
 -- | host constructor DbArray(dataDir, dataPath, shape, dtype='f8', len1d=0)
@@ -164,8 +165,7 @@ aryCtor !defaultDtype !pgsCtor !apk !ctorExit =
                 throwEdhSTM pgsCtor UsageError $ "Invalid dtype: " <> T.pack
                   (show dto)
               Just (ConcreteDataType !dt) -> do
-                ary <- unsafeIOToSTM
-                  $ mmapArray dataDir dataPath shape dt dto len1d
+                ary <- mmapArray dataDir dataPath shape dt dto len1d
                 ctorExit $ toDyn ary
           _ -> throwEdhSTM pgsCtor UsageError $ "Bad dtype: " <> T.pack
             (edhTypeNameOf dtov)

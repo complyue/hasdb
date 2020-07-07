@@ -9,7 +9,7 @@ import ( Peer, **_ ) 'net/RT'
 import * 'net/symbols'
 effect import * 'net/effects'
 
-import ( DbClient, **_ ) 'db/client'
+import * 'db/client'
 
 
 # a Peer object should have been implanted atomically, the following
