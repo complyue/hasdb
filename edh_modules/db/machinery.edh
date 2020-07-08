@@ -681,8 +681,9 @@ export class SuperBack {
       }
 
       # cleanup the old relationship
-      case attrValOld of { { SuperBack: sbRefOld } } ->
-      this.db._cleanup_rel( that, this, attrKey, attrValOld, sbRefOld )
+      case attrValOld of { { SuperBack: sbRefOld } } -> this.db._cleanup_rel(
+        that, this, attrKey, attrValOld, sbRefOld
+      )
     }
 
     # apply the attribute update
