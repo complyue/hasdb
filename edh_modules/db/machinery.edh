@@ -103,16 +103,22 @@ export method className( o ) case constructor( o ) of { cls } -> cls.name
 
 # this tells persistent attributes from transient ones
 method hasReConRepr( attrVal ) case attrVal of {
-  { { DbArray: _ } } -> true;
-  { { Vector: _ } } -> true;
+  None -> true
+  { term := val } -> hasReConRepr( val )
+
+  # non-transactional containers
+  { { Vector: _ } } -> true
+  { { DbArray: _ } } -> true
+
   ; | type( attrVal ) ?<= [
     # types reconstructable from its textual representation
-    nil, # absent attribute
     BoolType, DecimalType, StringType, # literal values
-    # TODO validate deep content in a container are reconstructable from repr
-    PairType, ArgsPackType, ListType, DictType, # containers
-    ArgsPackType, # complexer container
+    # TODO validate that, the deep content in these containers are
+    # reconstructable from repr
+    PairType, ArgsPackType, # immutable containers
+    ListType, DictType, # mutable containers
   ] -> true
+
   false
 }
 
