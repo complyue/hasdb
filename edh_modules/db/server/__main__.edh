@@ -9,6 +9,8 @@
 import ( Peer, **_ ) 'net/RT'
 import * 'net/symbols'
 effect import * 'net/effects'
+import * 'dim'
+effect import * 'dim/effects'
 
 import ( DataBack, **_ ) 'db/machinery'
 

@@ -1,4 +1,7 @@
 
+import * 'dim'
+effect import * 'dim/effects'
+
 import * 'db'
 
 while true { # this is the *Loop* in so-called REPL

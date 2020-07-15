@@ -124,6 +124,10 @@ method hasReConRepr( attrVal ) case attrVal of {
 
 export method runDbApp( dataDir, dbApp ) {
 
+  # bring dtypes and their supporting effects into here
+  import * 'dim/dtypes'
+  effect import * 'dim/effects'
+
   # the persister will post the fd it opened as the latest data file
   # to this sink, it'll hold this fd open until it finalized a new data
   # file at the time the db is shutdown. the fd is passed to `db.init()`
@@ -184,6 +188,7 @@ class DataBackLifecycle {
     that.bootstrap()
 
     producer restoreData( outlet ) {
+      db = that # persisted repr may reference `db` upon being restored
       that._streamFromDisk( outlet, baseDFD )
     }
     that._replayHistory( restoreData() )

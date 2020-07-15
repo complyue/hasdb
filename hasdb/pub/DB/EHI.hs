@@ -10,8 +10,6 @@ import           Prelude
 
 import           Control.Monad.Reader
 
-import           Control.Exception
-
 import qualified Data.HashMap.Strict           as Map
 
 import           DB.RT
@@ -27,9 +25,6 @@ installDbBatteries :: EdhWorld -> IO ()
 installDbBatteries !world = do
 
   installDimBatteries world
-  moduDtypes <- installedEdhModule world "dim/dtypes" >>= \case
-    Nothing    -> throwIO $ TypeError "missing hasdim dtypes module"
-    Just !modu -> return modu
 
 
   -- this host module only used by 'db/machinery'
@@ -68,10 +63,6 @@ installDbBatteries !world = do
   -- restoration must all be available from this module
   void $ installEdhModule world "db/RT" $ \pgs exit -> do
 
-    defaultDataType <- lookupEntityAttr pgs
-                                        (objEntity moduDtypes)
-                                        (AttrByName "f8")
-
     let moduScope = contextScope $ edh'context pgs
         modu      = thisObject moduScope
 
@@ -103,7 +94,7 @@ installDbBatteries !world = do
          ]
       ++ [ ((nm, ) <$>) $ mkExtHostClass moduScope nm hc $ \ !classUniq ->
              createSideEntityManipulater True =<< mths classUniq pgs
-         | (nm, hc, mths) <- [("DbArray", aryCtor defaultDataType, aryMethods)]
+         | (nm, hc, mths) <- [("DbArray", aryCtor, aryMethods)]
          ]
 
     artsDict <- createEdhDict

@@ -77,29 +77,18 @@ streamFromDiskProc :: EdhProcedure
 streamFromDiskProc (ArgsPack !args !kwargs) !exit = do
   pgs <- ask
   contEdhSTM $ do
-    let procCtx   = edh'context pgs
-        procScope = contextScope procCtx
-        db        = thatObject procScope
-    -- `that` object is the db instance, replace this host proc's top frame
-    -- with a scope having the db instace available from attr `db`, at the
-    -- same time lexcically nested within the host proc's original scope, so
-    -- can read all attrs there.
-    entWithDb <- createHashEntity
-      $ Map.fromList [(AttrByName "db", EdhObject db)]
-    let scopeWithDb = procScope
-          { scopeEntity = entWithDb
-          , scopeProc = (scopeProc procScope) { procedure'lexi = Just procScope
-                                              }
-          }
-        !ctxWithDb =
-          procCtx { callStack = scopeWithDb :| NE.tail (callStack procCtx) }
+-- run in parent context with artifacts necessary for persitent repr restoration
+    let procCtx     = edh'context pgs
+        parentScope = contextFrame procCtx 1
+    let !parentCtx =
+          procCtx { callStack = parentScope :| NE.tail (callStack procCtx) }
     case args of
       [EdhSink !restoreOutlet, EdhDecimal baseDFD] | Map.null kwargs ->
         -- not to use `unsafeIOToSTM` here, despite it being retry prone,
         -- nested `atomically` is particularly prohibited.
         edhPerformIO
             pgs
-            ( streamEdhReprFromDisk ctxWithDb restoreOutlet
+            ( streamEdhReprFromDisk parentCtx restoreOutlet
             $ fromIntegral
             $ D.castDecimalToInteger baseDFD
             )

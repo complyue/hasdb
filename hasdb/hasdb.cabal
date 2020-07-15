@@ -73,7 +73,7 @@ library hasdb-internal
     default-language: Haskell2010
     default-extensions: NoImplicitPrelude OverloadedStrings LambdaCase
                         BangPatterns TupleSections ScopedTypeVariables
-                        GADTs
+                        GADTs TypeApplications
     ghc-options: -Wall
     build-depends:
         base >=4.12,

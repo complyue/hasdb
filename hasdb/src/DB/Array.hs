@@ -21,6 +21,7 @@ import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import qualified Data.HashMap.Strict           as Map
 import           Data.Unique
+import           Data.Coerce
 import           Data.Dynamic
 
 import qualified Data.Lossless.Decimal         as D
@@ -108,8 +109,7 @@ data DbArray where
   DbArray ::(Storable a, EdhXchg a) => {
       db'array'path  :: !Text           -- ^ data file path relative to root
     , db'array'shape :: !ArrayShape     -- ^ shape of dimensions
-    , db'array'dtype :: !(DataType a)   -- ^ dtype
-    , db'array'dto   :: !Object         -- ^ dtype object, favor Edh
+    , db'array'dti   :: !DataTypeIdent  -- ^ dtype identifier
     , db'array'store :: !(FlatArray a)  -- ^ flat storage
     , db'array'len1d :: !(TVar Int)     -- ^ valid length of 1st dimension
     } -> DbArray
@@ -120,82 +120,61 @@ unwrapArrayObject :: Object -> STM (Maybe DbArray)
 unwrapArrayObject !ao = fromDynamic <$> readTVar (entity'store $ objEntity ao)
 
 
-mmapArray
-  :: (Storable a, EdhXchg a)
-  => Text
-  -> Text
-  -> ArrayShape
-  -> DataType a
-  -> Object
-  -> Int
-  -> STM DbArray
-mmapArray !dataDir !dataPath !shape !dtype !dto !len1d = do
-  len1dVar <- newTVar len1d
-  unsafeIOToSTM $ do
--- XXX this is retry prone, has to be solid reliable when rapidly retried
---     with the result possibly discarded
--- TODO battle test this impl.
-    let !dataFilePath = T.unpack dataDir </> T.unpack (dataPath <> ".edf")
-        !dataFileDir  = takeDirectory dataFilePath
-        !cap          = dbArraySize shape
-    createDirectoryIfMissing True dataFileDir
-    (fp, _, _) <- mmapFileForeignPtr dataFilePath ReadWriteEx
-      $ Just (0, cap * data'element'size dtype)
-    return $ DbArray { db'array'path  = dataPath
-                     , db'array'shape = shape
-                     , db'array'dtype = dtype
-                     , db'array'dto   = dto
-                     , db'array'store = FlatArray cap fp
-                     , db'array'len1d = len1dVar
-                     }
+mmapArray :: Text -> Text -> ArrayShape -> DataType -> Int -> STM DbArray
+mmapArray !dataDir !dataPath !shape (DataType !dti (dts :: FlatStorable a)) !len1d
+  = do
+    len1dVar <- newTVar len1d
+    unsafeIOToSTM $ do
+  -- XXX this is retry prone, has to be solid reliable when rapidly retried
+  --     with the result possibly discarded
+  -- TODO battle test this impl.
+      let !dataFilePath = T.unpack dataDir </> T.unpack (dataPath <> ".edf")
+          !dataFileDir  = takeDirectory dataFilePath
+          !cap          = dbArraySize shape
+      createDirectoryIfMissing True dataFileDir
+      (fp, _, _) <- mmapFileForeignPtr dataFilePath ReadWriteEx
+        $ Just (0, cap * flat'element'size dts)
+      return $ DbArray @a dataPath shape dti (FlatArray cap fp) len1dVar
 
 
--- | host constructor DbArray(dataDir, dataPath, shape, dtype='f8', len1d=0)
-aryCtor :: EdhValue -> EdhHostCtor
-aryCtor !defaultDtype !pgsCtor !apk !ctorExit =
-  case parseArgsPack ("", "", nil, defaultDtype, 0 :: Int) ctorArgsParser apk of
+-- | host constructor DbArray(dataDir, dataPath, shape, dtype='float64', len1d=0)
+aryCtor :: EdhHostCtor
+aryCtor !pgsCtor !apk !ctorExit =
+  case parseArgsPack ("", "", nil, "float64", 0 :: Int) ctorArgsParser apk of
     Left err -> throwEdhSTM pgsCtor UsageError err
-    Right (dataDir, dataPath, shapeVal, dtov, len1d) ->
+    Right (dataDir, dataPath, shapeVal, dti, len1d) ->
       if dataDir == "" || dataPath == ""
         then throwEdhSTM pgsCtor UsageError "Missing dataDir/dataPath"
-        else parseArrayShape pgsCtor shapeVal $ \ !shape -> case dtov of
-          EdhObject !dto ->
-            fromDynamic <$> readTVar (entity'store $ objEntity dto) >>= \case
-              Nothing ->
-                throwEdhSTM pgsCtor UsageError $ "Invalid dtype: " <> T.pack
-                  (show dto)
-              Just (ConcreteDataType !dt) -> do
-                ary <- mmapArray dataDir dataPath shape dt dto len1d
-                ctorExit $ toDyn ary
-          _ -> throwEdhSTM pgsCtor UsageError $ "Bad dtype: " <> T.pack
-            (edhTypeNameOf dtov)
+        else parseArrayShape pgsCtor shapeVal $ \ !shape ->
+          resolveDataType pgsCtor dti $ \ !dt -> do
+            ary <- mmapArray dataDir dataPath shape dt len1d
+            ctorExit $ toDyn ary
  where
   ctorArgsParser =
     ArgsPackParser
-        [ \arg (_, dataPath', shape', dtype', len1d') -> case arg of
-          EdhString dataDir ->
-            Right (dataDir, dataPath', shape', dtype', len1d')
-          _ -> Left "Invalid dataDir"
-        , \arg (dataDir', _, shape', dtype', len1d') -> case arg of
+        [ \arg (_, dataPath', shape', dti', len1d') -> case arg of
+          EdhString dataDir -> Right (dataDir, dataPath', shape', dti', len1d')
+          _                 -> Left "Invalid dataDir"
+        , \arg (dataDir', _, shape', dti', len1d') -> case arg of
           EdhString dataPath ->
-            Right (dataDir', dataPath, shape', dtype', len1d')
+            Right (dataDir', dataPath, shape', dti', len1d')
           _ -> Left "Invalid dataPath"
-        , \arg (dataDir', dataPath', _, dtype', len1d') ->
-          Right (dataDir', dataPath', arg, dtype', len1d')
+        , \arg (dataDir', dataPath', _, dti', len1d') ->
+          Right (dataDir', dataPath', arg, dti', len1d')
         , \arg (dataDir', dataPath', shape', _, len1d') ->
           case edhUltimate arg of
-            dto@EdhObject{} -> Right (dataDir', dataPath', shape', dto, len1d')
-            !badDtype ->
-              Left $ "Bad dtype: " <> T.pack (edhTypeNameOf badDtype)
+            EdhString !dti -> Right (dataDir', dataPath', shape', dti, len1d')
+            !badDtype      -> Left $ "Bad dtype identifier of " <> T.pack
+              (edhTypeNameOf badDtype)
         ]
       $ Map.fromList
           [ ( "dtype"
             , \arg (dataDir', dataPath', shape', _, len1d') ->
               case edhUltimate arg of
-                dto@EdhObject{} ->
-                  Right (dataDir', dataPath', shape', dto, len1d')
-                !badDtype ->
-                  Left $ "Bad dtype: " <> T.pack (edhTypeNameOf badDtype)
+                EdhString !dti ->
+                  Right (dataDir', dataPath', shape', dti, len1d')
+                !badDtype -> Left $ "Bad dtype identifier of " <> T.pack
+                  (edhTypeNameOf badDtype)
             )
           , ( "len1d"
             , \arg (dataDir', dataPath', shape', dtype', _) -> case arg of
@@ -243,7 +222,7 @@ aryMethods !classUniq !pgsModule =
 
   aryDtypeGetter :: EdhProcedure
   aryDtypeGetter _ !exit = withEntityOfClass classUniq
-    $ \ !pgs !ary -> exitEdhSTM pgs exit $ EdhObject $ db'array'dto ary
+    $ \ !pgs !ary -> exitEdhSTM pgs exit $ EdhString $ db'array'dti ary
 
   aryLen1dGetter :: EdhProcedure
   aryLen1dGetter _ !exit = withEntityOfClass classUniq $ \ !pgs !ary ->
@@ -260,52 +239,49 @@ aryMethods !classUniq !pgsModule =
 
   aryIdxReadProc :: EdhProcedure
   aryIdxReadProc (ArgsPack !args _) !exit =
-    withEntityOfClass classUniq
-      $ \ !pgs (DbArray _ !shape !dt _dto !fa _l1dv) -> case args of
+    withEntityOfClass classUniq $ \ !pgs (DbArray _ !shape !dti !fa _l1dv) ->
+      resolveDataType pgs dti $ \(DataType _dti !dts) -> case args of
           -- TODO support slicing, of coz need to tell a slicing index from
           --      an element index first
-          [EdhArgsPack (ArgsPack !idxs _)] ->
-            flatIndexInShape pgs idxs shape $ \ !flatIdx ->
-              read'flat'array'cell dt pgs flatIdx fa
-                $ \ !rv -> exitEdhSTM pgs exit rv
-          idxs -> flatIndexInShape pgs idxs shape $ \ !flatIdx ->
-            read'flat'array'cell dt pgs flatIdx fa
+        [EdhArgsPack (ArgsPack !idxs _)] ->
+          flatIndexInShape pgs idxs shape $ \ !flatIdx ->
+            flat'array'read dts pgs (coerce fa) flatIdx
               $ \ !rv -> exitEdhSTM pgs exit rv
+        idxs -> flatIndexInShape pgs idxs shape $ \ !flatIdx ->
+          flat'array'read dts pgs (coerce fa) flatIdx
+            $ \ !rv -> exitEdhSTM pgs exit rv
 
 
   aryIdxWriteProc :: EdhProcedure
   aryIdxWriteProc (ArgsPack !args _) !exit =
-    withEntityOfClass classUniq
-      $ \ !pgs (DbArray _ !shape !dt _dto !fa _l1dv) -> case args of
+    withEntityOfClass classUniq $ \ !pgs (DbArray _ !shape !dti !fa _l1dv) ->
+      resolveDataType pgs dti $ \(DataType _dti !dts) -> case args of
           -- TODO support slicing assign, of coz need to tell a slicing index
           --      from an element index first
-          [EdhArgsPack (ArgsPack !idxs _), !dv] ->
-            flatIndexInShape pgs idxs shape $ \ !flatIdx ->
-              write'flat'array'cell dt pgs dv flatIdx fa
-                $ \ !rv -> exitEdhSTM pgs exit rv
-          [idx, !dv] -> flatIndexInShape pgs [idx] shape $ \ !flatIdx ->
-            write'flat'array'cell dt pgs dv flatIdx fa
+        [EdhArgsPack (ArgsPack !idxs _), !dv] ->
+          flatIndexInShape pgs idxs shape $ \ !flatIdx ->
+            flat'array'write dts pgs (coerce fa) flatIdx dv
               $ \ !rv -> exitEdhSTM pgs exit rv
-          -- TODO more friendly error msg
-          _ -> throwEdhSTM pgs UsageError "Invalid index assign args"
+        [idx, !dv] -> flatIndexInShape pgs [idx] shape $ \ !flatIdx ->
+          flat'array'write dts pgs (coerce fa) flatIdx dv
+            $ \ !rv -> exitEdhSTM pgs exit rv
+        -- TODO more friendly error msg
+        _ -> throwEdhSTM pgs UsageError "Invalid index assign args"
 
   aryReprProc :: EdhProcedure
   aryReprProc _ !exit =
     withEntityOfClass classUniq
-      $ \ !pgs (DbArray !path !shape _dt !dto _fa !l1dv) ->
+      $ \ !pgs (DbArray !path !shape !dti _fa !l1dv) ->
           readTVar l1dv >>= \ !len1d ->
-            fromDynamic <$> readTVar (entity'store $ objEntity dto) >>= \case
-              Nothing -> error "bug: bad dto"
-              Just (ConcreteDataType !dt) ->
-                exitEdhSTM pgs exit
-                  $  EdhString
-                  $  "db.Array("
-                  <> T.pack (show path)
-                  <> ", "
-                  <> T.pack (show shape)
-                  <> ", dtype="
-                  <> data'type'identifier dt
-                  <> ", len1d="
-                  <> T.pack (show len1d)
-                  <> ")"
+            exitEdhSTM pgs exit
+              $  EdhString
+              $  "db.Array("
+              <> T.pack (show path)
+              <> ", "
+              <> T.pack (show shape)
+              <> ", dtype="
+              <> dti
+              <> ", len1d="
+              <> T.pack (show len1d)
+              <> ")"
 
