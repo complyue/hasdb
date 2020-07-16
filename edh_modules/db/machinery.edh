@@ -3,6 +3,9 @@
  # entity/relationship business objects.
  #}
 
+# bring default dtype identifiers into here
+import * 'dim/dtypes'
+
 import (
   DbArray,
   newBo,
@@ -124,8 +127,7 @@ method hasReConRepr( attrVal ) case attrVal of {
 
 export method runDbApp( dataDir, dbApp ) {
 
-  # bring dtypes and their supporting effects into here
-  import * 'dim/dtypes'
+  # bring fallback supporting effects of dtypes into here
   effect import * 'dim/effects'
 
   # the persister will post the fd it opened as the latest data file
