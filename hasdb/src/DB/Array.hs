@@ -67,7 +67,7 @@ parseArrayShape !pgs !val !exit = case val of
     $ \r -> throwEdhSTM pgs UsageError $ "Invalid dimension spec: " <> r
 edhArrayShape :: ArrayShape -> EdhValue
 edhArrayShape (ArrayShape !shape) = EdhArgsPack
-  $ ArgsPack (edhDim <$> NE.toList shape) mempty
+  $ ArgsPack (edhDim <$> NE.toList shape) odEmpty
  where
   edhDim :: (DimName, DimSize) -> EdhValue
   edhDim (""  , size) = EdhDecimal $ fromIntegral size

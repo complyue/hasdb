@@ -10,7 +10,6 @@ import           Control.Concurrent.STM
 
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Data.List.NonEmpty            as NE
-import qualified Data.HashMap.Strict           as Map
 import qualified Data.Text                     as T
 
 import qualified Data.Lossless.Decimal         as D
@@ -23,8 +22,8 @@ import           DB.Storage.DataDir
 -- this performs non-standard business object construction
 newBoProc :: EdhProcedure
 newBoProc (ArgsPack !args !kwargs) !exit = case args of
-  [EdhClass !cls, EdhObject !sbObj] | Map.null kwargs ->
-    createEdhObject cls (ArgsPack [] Map.empty) $ \(OriginalValue boVal _ _) ->
+  [EdhClass !cls, EdhObject !sbObj] | odNull kwargs ->
+    createEdhObject cls (ArgsPack [] odEmpty) $ \(OriginalValue boVal _ _) ->
       case boVal of
         EdhObject !bo -> do
           pgs <- ask
@@ -39,7 +38,7 @@ newBoProc (ArgsPack !args !kwargs) !exit = case args of
                     EdhNil -> exitEdhSTM pgs exit $ EdhObject bo
                     EdhMethod !mth'proc ->
                       runEdhProc pgs
-                        $ callEdhMethod bo mth'proc (ArgsPack [] Map.empty) id
+                        $ callEdhMethod bo mth'proc (ArgsPack [] odEmpty) id
                         $ \_ -> contEdhSTM $ exitEdhSTM pgs exit $ EdhObject bo
                     !badMth ->
                       throwEdhSTM pgs EvalError
@@ -56,7 +55,7 @@ newBoProc (ArgsPack !args !kwargs) !exit = case args of
 -- the one running the db app.
 streamToDiskProc :: EdhProcedure
 streamToDiskProc (ArgsPack [EdhSink !persistOutlet, EdhString !dataFileFolder, EdhSink !sinkBaseDFD] !kwargs) !exit
-  | Map.null kwargs
+  | odNull kwargs
   = ask >>= \pgs ->
     contEdhSTM
       $ edhPerformIO
@@ -83,7 +82,7 @@ streamFromDiskProc (ArgsPack !args !kwargs) !exit = do
     let !parentCtx =
           procCtx { callStack = parentScope :| NE.tail (callStack procCtx) }
     case args of
-      [EdhSink !restoreOutlet, EdhDecimal baseDFD] | Map.null kwargs ->
+      [EdhSink !restoreOutlet, EdhDecimal baseDFD] | odNull kwargs ->
         -- not to use `unsafeIOToSTM` here, despite it being retry prone,
         -- nested `atomically` is particularly prohibited.
         edhPerformIO

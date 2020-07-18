@@ -45,7 +45,7 @@ bosMethods !classUniq !pgsModule = sequence
 
   bosAddProc :: EdhProcedure
   bosAddProc (ArgsPack !args !kwargs) !exit = case args of
-    [EdhObject !bo] | Map.null kwargs ->
+    [EdhObject !bo] | odNull kwargs ->
       modifyEntityOfClass classUniq exit $ \ !pgs !bos !modExit ->
         modExit (Set.insert bo bos)
           $ EdhObject
@@ -56,7 +56,7 @@ bosMethods !classUniq !pgsModule = sequence
 
   bosThrowAwayProc :: EdhProcedure
   bosThrowAwayProc (ArgsPack !args !kwargs) !exit = case args of
-    [EdhObject !bo] | Map.null kwargs ->
+    [EdhObject !bo] | odNull kwargs ->
       modifyEntityOfClass classUniq exit $ \ !pgs !bos !modExit ->
         modExit (Set.delete bo bos)
           $ EdhObject
@@ -213,7 +213,7 @@ edhValOfIdxKey (Just (IdxBoolVal v)) = EdhBool v
 edhValOfIdxKey (Just (IdxNumVal  v)) = EdhDecimal v
 edhValOfIdxKey (Just (IdxStrVal  v)) = EdhString v
 edhValOfIdxKey (Just (IdxAggrVal ikvs)) =
-  EdhArgsPack $ ArgsPack (edhValOfIdxKey <$> ikvs) mempty
+  EdhArgsPack $ ArgsPack (edhValOfIdxKey <$> ikvs) odEmpty
 
 
 -- todo using lists here may be less efficient due to cache unfriendly,
@@ -258,7 +258,7 @@ extractIndexKey !pgs spec@(IndexSpec !spec') !bo !exit =
 
 edhValueOfIndexKey :: IndexKey -> EdhValue
 edhValueOfIndexKey (IndexKey _ ikvs) =
-  EdhArgsPack $ ArgsPack (edhValOfIdxKey <$> ikvs) mempty
+  EdhArgsPack $ ArgsPack (edhValOfIdxKey <$> ikvs) odEmpty
 
 
 -- | Non-Unique Business Object Index
@@ -275,7 +275,7 @@ lookupBoIndex (BoIndex !spec !tree _) !idxKeyVals =
   case TreeMap.lookup (IndexKey spec idxKeyVals) tree of
     Nothing -> return EdhNil
     Just !bos ->
-      return $ EdhArgsPack $ (ArgsPack (EdhObject <$> Set.toList bos) mempty)
+      return $ EdhArgsPack $ (ArgsPack (EdhObject <$> Set.toList bos) odEmpty)
 
 reindexBusObj
   :: EdhProgState -> BoIndex -> Object -> (BoIndex -> STM ()) -> STM ()
@@ -311,7 +311,7 @@ listIdxGroups
   -> STM [(IndexKey, EdhValue)]
 listIdxGroups (BoIndex !spec !tree _) !minKeyVals !maxKeyVals =
   return $ (<$> seg) $ \(k, bos) ->
-    (k, EdhArgsPack $ ArgsPack (EdhObject <$> Set.toList bos) mempty)
+    (k, EdhArgsPack $ ArgsPack (EdhObject <$> Set.toList bos) odEmpty)
   where seg = indexKeyRange spec tree minKeyVals maxKeyVals
 
 -- | host constructor BoIndex( indexSpec )
@@ -352,7 +352,7 @@ boiMethods !classUniq !pgsModule = sequence
   boiKeysProc _ !exit = withEntityOfClass classUniq $ \ !pgs !boiVar -> do
     BoIndex (IndexSpec !spec) _ _ <- readTMVar boiVar
     exitEdhSTM pgs exit $ EdhArgsPack $ ArgsPack (attrKeyValue . fst <$> spec)
-                                                 mempty
+                                                 odEmpty
 
   boiReprProc :: EdhProcedure
   boiReprProc _ !exit = withEntityOfClass classUniq $ \ !pgs !boiVar -> do
@@ -361,7 +361,7 @@ boiMethods !classUniq !pgsModule = sequence
 
   boiReindexProc :: EdhProcedure
   boiReindexProc (ArgsPack !args !kwargs) !exit = case args of
-    [EdhObject !bo] | Map.null kwargs ->
+    [EdhObject !bo] | odNull kwargs ->
       modifyEntityOfClass classUniq exit $ \ !pgs !boi !modExit ->
         reindexBusObj pgs boi bo $ \ !boi' ->
           modExit boi' $ EdhObject $ thatObject $ contextScope $ edh'context pgs
@@ -369,7 +369,7 @@ boiMethods !classUniq !pgsModule = sequence
 
   boiThrowAwayProc :: EdhProcedure
   boiThrowAwayProc (ArgsPack !args !kwargs) !exit = case args of
-    [EdhObject !bo] | Map.null kwargs ->
+    [EdhObject !bo] | odNull kwargs ->
       modifyEntityOfClass classUniq exit $ \ !pgs !boi !modExit ->
         throwAwayIdxObj pgs boi bo
           $ \boi' ->
@@ -378,7 +378,7 @@ boiMethods !classUniq !pgsModule = sequence
     _ -> throwEdh UsageError "Invalid args to boiThrowAwayProc"
 
   boiLookupProc :: EdhProcedure
-  boiLookupProc (ArgsPack [keyValues] !kwargs) !exit | Map.null kwargs =
+  boiLookupProc (ArgsPack [keyValues] !kwargs) !exit | odNull kwargs =
     withEntityOfClass classUniq $ \ !pgs !boiVar -> do
       !boi <- readTMVar boiVar
       edhIdxKeyVals pgs keyValues $ \case
@@ -401,7 +401,7 @@ boiMethods !classUniq !pgsModule = sequence
             runEdhProc pgs'
               $ iter'cb
                   (EdhArgsPack
-                    (ArgsPack [edhValueOfIndexKey ik, noneNil v] Map.empty)
+                    (ArgsPack [edhValueOfIndexKey ik, noneNil v] odEmpty)
                   )
               $ \case
                   Left (pgsThrower, exv) ->
@@ -507,7 +507,7 @@ buiMethods !classUniq !pgsModule = sequence
   buiKeysProc _ !exit = withEntityOfClass classUniq $ \ !pgs !buiVar -> do
     BuIndex (IndexSpec !spec) _ _ <- readTMVar buiVar
     exitEdhSTM pgs exit $ EdhArgsPack $ ArgsPack (attrKeyValue . fst <$> spec)
-                                                 mempty
+                                                 odEmpty
 
   buiReprProc :: EdhProcedure
   buiReprProc _ !exit = withEntityOfClass classUniq $ \ !pgs !buiVar -> do
@@ -516,7 +516,7 @@ buiMethods !classUniq !pgsModule = sequence
 
   buiReindexProc :: EdhProcedure
   buiReindexProc (ArgsPack !args !kwargs) !exit = case args of
-    [EdhObject !bo] | Map.null kwargs ->
+    [EdhObject !bo] | odNull kwargs ->
       modifyEntityOfClass classUniq exit $ \ !pgs !bui !modExit ->
         reindexUniqObj pgs bui bo
           $ \bui' ->
@@ -526,7 +526,7 @@ buiMethods !classUniq !pgsModule = sequence
 
   buiThrowAwayProc :: EdhProcedure
   buiThrowAwayProc (ArgsPack !args !kwargs) !exit = case args of
-    [EdhObject !bo] | Map.null kwargs ->
+    [EdhObject !bo] | odNull kwargs ->
       modifyEntityOfClass classUniq exit $ \ !pgs !bui !modExit ->
         throwAwayUniqObj bui pgs bo
           $ \bui' ->
@@ -535,7 +535,7 @@ buiMethods !classUniq !pgsModule = sequence
     _ -> throwEdh UsageError "Invalid args to buiThrowAwayProc"
 
   buiLookupProc :: EdhProcedure
-  buiLookupProc (ArgsPack [keyValues] !kwargs) !exit | Map.null kwargs =
+  buiLookupProc (ArgsPack [keyValues] !kwargs) !exit | odNull kwargs =
     withEntityOfClass classUniq $ \ !pgs !buiVar -> do
       !bui <- readTMVar buiVar
       edhIdxKeyVals pgs keyValues $ \case
@@ -558,7 +558,7 @@ buiMethods !classUniq !pgsModule = sequence
             runEdhProc pgs'
               $ iter'cb
                   (EdhArgsPack
-                    (ArgsPack [edhValueOfIndexKey ik, noneNil v] Map.empty)
+                    (ArgsPack [edhValueOfIndexKey ik, noneNil v] odEmpty)
                   )
               $ \case
                   Left (pgsThrower, exv) ->

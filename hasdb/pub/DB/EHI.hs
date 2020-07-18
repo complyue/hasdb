@@ -10,8 +10,6 @@ import           Prelude
 
 import           Control.Monad.Reader
 
-import qualified Data.HashMap.Strict           as Map
-
 import           DB.RT
 import           DB.Array
 import           DB.Storage.InMem
@@ -49,8 +47,7 @@ installDbBatteries !world = do
         ]
       ]
 
-    artsDict <- createEdhDict
-      $ Map.fromList [ (EdhString k, v) | (k, v) <- moduArts ]
+    artsDict <- createEdhDict [ (EdhString k, v) | (k, v) <- moduArts ]
     updateEntityAttrs pgs (objEntity modu)
       $  [ (AttrByName k, v) | (k, v) <- moduArts ]
       ++ [(AttrByName "__exports__", artsDict)]
@@ -97,8 +94,7 @@ installDbBatteries !world = do
          | (nm, hc, mths) <- [("DbArray", aryCtor, aryMethods)]
          ]
 
-    artsDict <- createEdhDict
-      $ Map.fromList [ (EdhString k, v) | (k, v) <- moduArts ]
+    artsDict <- createEdhDict [ (EdhString k, v) | (k, v) <- moduArts ]
     updateEntityAttrs pgs (objEntity modu)
       $  [ (AttrByName k, v) | (k, v) <- moduArts ]
       ++ [(AttrByName "__exports__", artsDict)]
