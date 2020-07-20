@@ -47,7 +47,8 @@ installDbBatteries !world = do
         ]
       ]
 
-    artsDict <- createEdhDict [ (EdhString k, v) | (k, v) <- moduArts ]
+    artsDict <- EdhDict
+      <$> createEdhDict [ (EdhString k, v) | (k, v) <- moduArts ]
     updateEntityAttrs pgs (objEntity modu)
       $  [ (AttrByName k, v) | (k, v) <- moduArts ]
       ++ [(AttrByName "__exports__", artsDict)]
@@ -94,7 +95,8 @@ installDbBatteries !world = do
          | (nm, hc, mths) <- [("DbArray", aryCtor, aryMethods)]
          ]
 
-    artsDict <- createEdhDict [ (EdhString k, v) | (k, v) <- moduArts ]
+    artsDict <- EdhDict
+      <$> createEdhDict [ (EdhString k, v) | (k, v) <- moduArts ]
     updateEntityAttrs pgs (objEntity modu)
       $  [ (AttrByName k, v) | (k, v) <- moduArts ]
       ++ [(AttrByName "__exports__", artsDict)]
