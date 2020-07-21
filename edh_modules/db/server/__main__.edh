@@ -68,7 +68,13 @@ perceive peer.armChannel( errChan ?:= 'err' ) {
 
 } $=> { exc } -> { # catch & log errors caused by this client,
   # don't crash the server
-  console.error<| 'DB client ' ++ peer ++ ' caused some error: ' ++ exc
+  if peer.eol() is false then {
+    console.debug<| 'DB client ' ++ peer ++ ' caused some error: ' ++ exc
+    peer.p2c( errChan ?:= 'err', repr( 'Peer error: ' ++ exc ) )
+  } else {
+    console.error<| 'DB client ' ++ peer ++ ' silently caused some error: '
+    ++ exc
+  }
 } @=> {
   console.debug<| 'Done with db client - ' ++ peer
 }
