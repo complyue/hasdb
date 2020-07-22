@@ -152,8 +152,26 @@ aryCtor !pgsCtor !apk !ctorExit =
             $ \dt@(DataType _dti (_dts :: FlatStorable a)) -> do
                 asVar    <- newEmptyTMVar
                 len1dVar <- newTVar len1d
-                edhForkIO pgsCtor $ mmapArray @a dataDir dataPath shape dt asVar
-                ctorExit $ toDyn $ DbArray @a dataPath shape dti asVar len1dVar
+                runEdhProc pgsCtor 
+                  -- the server will crash if loads too many small arrays,
+                  -- might be it's process' address space suffering from
+                  -- exhaustion or at least serious fragmentation
+                  $ performEdhEffect' (AttrByName "_loadDbArrays")
+                  $ \case
+                      EdhBool True -> contEdhSTM $ do
+                        edhForkIO pgsCtor
+                          $ mmapArray @a dataDir dataPath shape dt asVar
+                        ctorExit $ toDyn $ DbArray @a dataPath
+                                                      shape
+                                                      dti
+                                                      asVar
+                                                      len1dVar
+                      _ -> contEdhSTM $ ctorExit $ toDyn $ DbArray @a
+                        dataPath
+                        shape
+                        dti
+                        asVar
+                        len1dVar
  where
   ctorArgsParser =
     ArgsPackParser

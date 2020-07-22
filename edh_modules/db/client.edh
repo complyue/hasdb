@@ -63,6 +63,7 @@ export class DbClient {
 
   # this makes `db.Array(...)` eval right at the client site
   method Array (*** apk ) {
+    effect _loadDbArrays = true
     DbArray( this.dataDir, ***apk )
   }
 

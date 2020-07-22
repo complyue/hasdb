@@ -234,6 +234,7 @@ export class DataBack {
   }
 
   method Array (*** apk ) {
+    effect _loadDbArrays = false
     DbArray( this.dataDir, *** apk )
   }
 
