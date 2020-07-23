@@ -186,16 +186,23 @@ class DataBackLifecycle {
     # note `that` reference won't invoke magics, just does vanilla
     # attribute resolution and do the call against the result.
 
+    dbStartTime = console.now()
+
     # a db app needs this chance to prepare itself for history replay
     that.bootstrap()
 
+    console.info<| 'Restoring history data ...'
     producer restoreData( outlet ) {
       db = that # persisted repr may reference `db` upon being restored
       that._streamFromDisk( outlet, baseDFD )
     }
     that._replayHistory( restoreData() )
 
+    console.info<| 'Baselining history data ...'
     that._dumpBaseData()
+
+    console.info<| 'DataBack startup in '
+    ++ ( ( console.now() - dbStartTime ) // 1e7 / 1e2 ) ++ ' seconds.'
 
     # TODO take this chance to physically discard older files in the data
     #      folder, as a means of automatic compacting of backing storage.
