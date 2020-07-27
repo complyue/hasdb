@@ -4,6 +4,8 @@ module DB.RT where
 import           Prelude
 -- import           Debug.Trace
 
+import           GHC.Conc                       ( unsafeIOToSTM )
+
 import           Control.Monad.Reader
 -- import           Control.Concurrent
 import           Control.Concurrent.STM
@@ -11,11 +13,54 @@ import           Control.Concurrent.STM
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Data.List.NonEmpty            as NE
 import qualified Data.Text                     as T
+import           Data.Unique
+import           Data.Dynamic
+
+import qualified Data.UUID                     as UUID
+import qualified Data.UUID.V4                  as UUID
 
 import qualified Data.Lossless.Decimal         as D
 import           Language.Edh.EHI
 
 import           DB.Storage.DataDir
+
+
+-- | host Class UUID()
+uuidCtor :: EdhHostCtor
+uuidCtor _ (ArgsPack [] !kwargs) !ctorExit | odNull kwargs =
+  unsafeIOToSTM UUID.nextRandom >>= ctorExit . toDyn
+uuidCtor !pgsCtor (ArgsPack [EdhString !uuidTxt] !kwargs) !ctorExit
+  | odNull kwargs = case UUID.fromText uuidTxt of
+    Just !uuid -> ctorExit $ toDyn uuid
+    _ -> throwEdhSTM pgsCtor UsageError $ "Invalid uuid string: " <> uuidTxt
+-- todo support more forms of ctor args
+uuidCtor !pgsCtor _ _ = throwEdhSTM pgsCtor UsageError "Invalid args to UUID()"
+
+uuidMethods :: Unique -> EdhProgState -> STM [(AttrKey, EdhValue)]
+uuidMethods _classUniq !pgsModule =
+  sequence
+    $ [ (AttrByName nm, ) <$> mkHostProc scope vc nm hp args
+      | (nm, vc, hp, args) <-
+        [ ("=="      , EdhMethod, uuidEqProc  , PackReceiver [])
+        , ("__repr__", EdhMethod, uuidReprProc, PackReceiver [])
+        ]
+      ]
+
+ where
+  !scope = contextScope $ edh'context pgsModule
+
+  uuidEqProc :: EdhProcedure
+  uuidEqProc (ArgsPack [EdhObject !objOther] _) !exit =
+    withThatEntity $ \ !pgs (uuid :: UUID.UUID) ->
+      fromDynamic <$> readTVar (entity'store $ objEntity objOther) >>= \case
+        Nothing -> exitEdhSTM pgs exit $ EdhBool False
+        Just (uuidOther :: UUID.UUID) ->
+          exitEdhSTM pgs exit $ EdhBool $ uuidOther == uuid
+  uuidEqProc _ !exit = exitEdhProc exit $ EdhBool False
+
+  uuidReprProc :: EdhProcedure
+  uuidReprProc _ !exit = withThatEntity $ \ !pgs (uuid :: UUID.UUID) ->
+    exitEdhSTM pgs exit $ EdhString $ "UUID('" <> UUID.toText uuid <> "')"
 
 
 -- | utility newBo(boClass, sbObj)

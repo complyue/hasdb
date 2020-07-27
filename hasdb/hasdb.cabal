@@ -82,6 +82,7 @@ library hasdb-internal
         nedh -any,
         edh -any,
         lossless-decimal -any,
+        uuid -any,
         scientific -any,
         binary -any,
         filepath -any,

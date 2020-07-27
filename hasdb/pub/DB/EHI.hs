@@ -92,7 +92,8 @@ installDbBatteries !world = do
          ]
       ++ [ ((nm, ) <$>) $ mkExtHostClass moduScope nm hc $ \ !classUniq ->
              createSideEntityManipulater True =<< mths classUniq pgs
-         | (nm, hc, mths) <- [("DbArray", aryCtor, aryMethods)]
+         | (nm, hc, mths) <-
+           [("UUID", uuidCtor, uuidMethods), ("DbArray", aryCtor, aryMethods)]
          ]
 
     artsDict <- EdhDict

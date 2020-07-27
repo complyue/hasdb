@@ -259,11 +259,6 @@ export class DataBack {
     return nil
   }
 
-  # the last entity identifier allocated
-  # todo change to uuid for security reasons in production, instead of the
-  #      trivial natural numbers as for now
-  _last_eid = 0
-
   # reference all live business objects by eid, with each business
   # class having a separate dict in `_extents`
   _extents = {}
@@ -273,7 +268,7 @@ export class DataBack {
   _dump_version = -1
 
   method superBack() {
-    SuperBack( db=this, eid=this._last_eid+=1, )
+    SuperBack( db=this, eid=UUID(), )
   }
 
   # settle a new business object
@@ -505,10 +500,6 @@ export class DataBack {
         if ClassType != type( boClass ) then error (
           'Business class ' ++ boClassName ++ ' not available!'
         )
-
-        # admit historical largest eid, will not be needed in uuid schema
-        ai if eid > this._last_eid then
-        this._last_eid = eid
 
         bocExtent = this._extents[ boClass ] |> (
           this._extents[ boClass ] = {} )
