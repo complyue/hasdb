@@ -13,7 +13,8 @@ import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import qualified Data.HashMap.Strict           as Map
 import qualified Data.Map.Strict               as TreeMap
-import qualified Data.HashSet                  as Set
+import qualified StmContainers.Set             as Set
+import qualified ListT                         as ListT
 import           Data.Unique
 import           Data.Dynamic
 
@@ -23,13 +24,13 @@ import           Language.Edh.EHI
 
 
 -- | Business Object Set
-type BoSet = Set.HashSet Object
+type BoSet = Set.Set Object
 
 -- | host constructor BoSet()
 bosCtor :: EdhHostCtor
--- implement bos objects as heavy entity based, i.e. use 'TMVar' to wrape the
--- entity store, as to avoid space and time waste on STM retries
-bosCtor _ _ !ctorExit = newTMVar (Set.empty :: BoSet) >>= ctorExit . toDyn
+bosCtor _ _ !ctorExit = do
+  (bos :: BoSet) <- Set.new
+  ctorExit $ toDyn bos
 
 bosMethods :: Unique -> EdhProgState -> STM [(AttrKey, EdhValue)]
 bosMethods !classUniq !pgsModule = sequence
@@ -46,8 +47,9 @@ bosMethods !classUniq !pgsModule = sequence
   bosAddProc :: EdhProcedure
   bosAddProc (ArgsPack !args !kwargs) !exit = case args of
     [EdhObject !bo] | odNull kwargs ->
-      modifyEntityOfClass classUniq exit $ \ !pgs !bos !modExit ->
-        modExit (Set.insert bo bos)
+      withEntityOfClass classUniq $ \ !pgs !bos -> do
+        Set.insert bo bos
+        exitEdhSTM pgs exit
           $ EdhObject
           $ thatObject
           $ contextScope
@@ -57,8 +59,9 @@ bosMethods !classUniq !pgsModule = sequence
   bosThrowAwayProc :: EdhProcedure
   bosThrowAwayProc (ArgsPack !args !kwargs) !exit = case args of
     [EdhObject !bo] | odNull kwargs ->
-      modifyEntityOfClass classUniq exit $ \ !pgs !bos !modExit ->
-        modExit (Set.delete bo bos)
+      withEntityOfClass classUniq $ \ !pgs !bos -> do
+        Set.delete bo bos
+        exitEdhSTM pgs exit
           $ EdhObject
           $ thatObject
           $ contextScope
@@ -67,7 +70,7 @@ bosMethods !classUniq !pgsModule = sequence
 
   -- | host generator bos.all()
   bosAllProc :: EdhProcedure
-  bosAllProc _ !exit = withEntityOfClass classUniq $ \ !pgs !bosVar ->
+  bosAllProc _ !exit = withEntityOfClass classUniq $ \ !pgs (bos :: BoSet) ->
     case generatorCaller $ edh'context pgs of
       Nothing -> throwEdhSTM pgs UsageError "Can only be called as generator"
       Just (!pgs', !iter'cb) ->
@@ -82,7 +85,7 @@ bosMethods !classUniq !pgsModule = sequence
               Right (EdhReturn !rtn) -> exitEdhSTM pgs exit rtn
               _                      -> yieldResults rest
         in
-          readTMVar bosVar >>= yieldResults . Set.toList
+          ListT.toList (Set.listT bos) >>= yieldResults
 
 
 type AscSort = Bool
@@ -266,43 +269,44 @@ data BoIndex = BoIndex {
       spec'of'nou'idx :: !IndexSpec
       -- TODO find and use an effecient container with fast entry key update
       --      it's less optimal as using two maps here for now
-    , tree'of'nou'idx :: !(TreeMap.Map IndexKey (Set.HashSet Object))
+    , tree'of'nou'idx :: !(TreeMap.Map IndexKey BoSet)
     , reverse'of'nou'idx :: !(Map.HashMap Object IndexKey)
   }
 
 lookupBoIndex :: BoIndex -> [Maybe IdxKeyVal] -> STM EdhValue
 lookupBoIndex (BoIndex !spec !tree _) !idxKeyVals =
   case TreeMap.lookup (IndexKey spec idxKeyVals) tree of
-    Nothing -> return EdhNil
-    Just !bos ->
-      return $ EdhArgsPack $ (ArgsPack (EdhObject <$> Set.toList bos) odEmpty)
+    Nothing   -> return EdhNil
+    Just !bos -> do
+      (bol :: [Object]) <- ListT.toList $ Set.listT bos
+      return $ EdhArgsPack $ (ArgsPack (EdhObject <$> bol) odEmpty)
 
 reindexBusObj
   :: EdhProgState -> BoIndex -> Object -> (BoIndex -> STM ()) -> STM ()
 reindexBusObj !pgs boi@(BoIndex !spec !tree !rvrs) !bo !exit =
-  extractIndexKey pgs spec bo $ \newKey -> exit boi
-    { tree'of'nou'idx    = TreeMap.alter putBoIn newKey tree'
-    , reverse'of'nou'idx = Map.insert bo newKey rvrs
-    }
- where
-  putBoIn :: Maybe (Set.HashSet Object) -> Maybe (Set.HashSet Object)
-  putBoIn oldEntry = case oldEntry of
-    Nothing       -> Just $ Set.singleton bo
-    Just siblings -> Just $ Set.insert bo siblings
-  tree' = case Map.lookup bo rvrs of
-    Nothing     -> tree
-    Just oldKey -> TreeMap.update (Just . Set.delete bo) oldKey tree
+  extractIndexKey pgs spec bo $ \ !newKey -> do
+    case Map.lookup bo rvrs of
+      Nothing      -> pure ()
+      Just !oldKey -> case TreeMap.lookup oldKey tree of
+        Nothing   -> pure ()
+        Just !bos -> Set.delete bo bos
+    (tree', bos, rvrs') <- case TreeMap.lookup newKey tree of
+      Nothing -> do
+        (bos :: BoSet) <- Set.new
+        return (TreeMap.insert newKey bos tree, bos, Map.insert bo newKey rvrs)
+      Just !bos -> return (tree, bos, rvrs)
+    Set.insert bo bos
+    exit boi { tree'of'nou'idx = tree', reverse'of'nou'idx = rvrs' }
 
 throwAwayIdxObj
   :: EdhProgState -> BoIndex -> Object -> (BoIndex -> STM ()) -> STM ()
-throwAwayIdxObj _ boi@(BoIndex _ !tree !rvrs) !bo !exit = exit boi
-  { tree'of'nou'idx    = tree'
-  , reverse'of'nou'idx = Map.delete bo rvrs
-  }
- where
-  tree' = case Map.lookup bo rvrs of
-    Nothing     -> tree
-    Just oldKey -> TreeMap.update (Just . Set.delete bo) oldKey tree
+throwAwayIdxObj _ boi@(BoIndex _ !tree !rvrs) !bo !exit = do
+  case Map.lookup bo rvrs of
+    Nothing      -> return ()
+    Just !oldKey -> case TreeMap.lookup oldKey tree of
+      Nothing   -> return ()
+      Just !bos -> void $ Set.delete bo bos
+  exit boi { reverse'of'nou'idx = Map.delete bo rvrs }
 
 listIdxGroups
   :: BoIndex
@@ -310,8 +314,9 @@ listIdxGroups
   -> Maybe [Maybe IdxKeyVal]
   -> STM [(IndexKey, EdhValue)]
 listIdxGroups (BoIndex !spec !tree _) !minKeyVals !maxKeyVals =
-  return $ (<$> seg) $ \(k, bos) ->
-    (k, EdhArgsPack $ ArgsPack (EdhObject <$> Set.toList bos) odEmpty)
+  sequence $ (<$> seg) $ \(k, bos) -> do
+    !bol <- ListT.toList $ Set.listT bos
+    return (k, EdhArgsPack $ ArgsPack (EdhObject <$> bol) odEmpty)
   where seg = indexKeyRange spec tree minKeyVals maxKeyVals
 
 -- | host constructor BoIndex( indexSpec )
