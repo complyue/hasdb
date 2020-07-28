@@ -212,10 +212,11 @@ indexScan spec !minKey !maxKey !tsl !cont !exit = case minKey of
     Nothing          -> scan (listHead tsl)
     Just !maxKeyVals -> scanUpTo (IndexKey spec maxKeyVals) (listHead tsl)
   Just !minKeyVals -> locateNodeGE (IndexKey spec minKeyVals) tsl >>= \case
-    Nil               -> exit
-    Node _ _ !fwdPtrs -> case maxKey of
-      Nothing          -> scan fwdPtrs
-      Just !maxKeyVals -> scanUpTo (IndexKey spec maxKeyVals) fwdPtrs
+    Nil                   -> exit
+    Node !k !var !fwdPtrs -> readTVar var >>= \ !val ->
+      cont (k, val) $ case maxKey of
+        Nothing          -> scan fwdPtrs
+        Just !maxKeyVals -> scanUpTo (IndexKey spec maxKeyVals) fwdPtrs
  where
   scan !fwdPtrs = readArray fwdPtrs 1 >>= \case
     Nil -> exit
