@@ -3,7 +3,6 @@ export {
 
   import * 'dim'
 
-  import ( UUID, **_ ) 'db/RT'
   import * './options'
   import * './client'
   import * './server'
