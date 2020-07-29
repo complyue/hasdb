@@ -275,14 +275,16 @@ reindexUniqObj !pgs (BuIndex !spec !tsl !rvrs) !bo !exit = do
   Map.lookup bo rvrs >>= \case
     Nothing      -> pure ()
     Just !oldKey -> TSL.delete oldKey tsl
-  extractIndexKey pgs spec bo $ \ !newKey -> TSL.lookup newKey tsl >>= \case
-    Just _ ->
-      throwEdhSTM pgs EdhException -- todo use db specific exception here ?
-        $  "Violation of unique constraint on index: "
-        <> T.pack (show spec)
-    Nothing -> do
-      TSL.insert newKey bo tsl
-      exit
+  extractIndexKey pgs spec bo $ \ !newKey -> do
+    Map.insert newKey bo rvrs
+    TSL.lookup newKey tsl >>= \case
+      Just _ ->
+        throwEdhSTM pgs EdhException -- todo use db specific exception here ?
+          $  "Violation of unique constraint on index: "
+          <> T.pack (show spec)
+      Nothing -> do
+        TSL.insert newKey bo tsl
+        exit
 
 throwAwayUniqObj :: BuIndex -> EdhProgState -> Object -> STM () -> STM ()
 throwAwayUniqObj (BuIndex _ !tsl !rvrs) _ !bo !exit = do
