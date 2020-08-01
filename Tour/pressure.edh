@@ -1,10 +1,12 @@
-{#
+{
+  {#
 
-epm x cabal install hasdb
+  epm x cabal install hasdb
 
-epm x hasdb +RTS -N6 -A32m -H256m -qg -I0 -M2g < pressure.edh
+  epm x hasdb +RTS -N6 -A32m -H256m -qg -I0 -M2g < pressure.edh
 
- #}
+   #}
+}
 
 import * 'db/demo/pressure'
 
