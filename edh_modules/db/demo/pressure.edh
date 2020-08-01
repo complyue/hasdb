@@ -33,6 +33,18 @@ export class DbApp {
     # ...
   }
 
+  method newPersons( nPersons = 100, keep=true ) {
+    persons = []
+    for _ from range( nPersons ) do {
+      Person( '' ++ UUID(), 30 ) => persons
+    }
+    if keep then { return persons }
+    for p from persons do {
+      p.delete()
+    }
+    return nil
+  }
+
   method newDept( nPersons=200, keep=true ) {
     depart = Depart( '' ++ UUID() )
     persons = []

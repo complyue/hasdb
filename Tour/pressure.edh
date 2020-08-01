@@ -12,6 +12,8 @@ import * 'db/demo/pressure'
 
 runDbApp( '/dev/shm/demo', DbApp() )
 
+newPersons( 60 )
+
 nPersionPerDept = 60
 keep = false
 conc = 3
