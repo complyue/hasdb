@@ -1,0 +1,26 @@
+{#
+
+epm x cabal install hasdb
+
+epm x hasdb +RTS -N6 -A32m -H256m -qg -I0 -M2g < pressure.edh
+
+ #}
+
+import * 'db/demo/pressure'
+
+runDbApp( '/dev/shm/demo', DbApp() )
+
+nPersionPerDept = 100
+conc = 3
+
+# test water
+newDept( nPersionPerDept )
+
+# single threaded pressure
+# keepPressuring( nPersionPerDept )
+
+# concurrent pressure
+for _ from range( conc ) do { go keepPressuring( nPersionPerDept ) }
+
+# keep the program from terminating on end of stdin
+for _ from sink do error( 'impossible' )

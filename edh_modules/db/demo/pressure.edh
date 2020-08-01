@@ -1,0 +1,97 @@
+
+export { # re-export these imports
+  import * 'db'
+  import * 'db/machinery'
+
+  import * './schema'
+}
+
+
+export class DbApp {
+
+  # the effective `DataBack` instance for this app.
+  #
+  # will be assigned during `bootstrap()` method, which is called from the
+  # effective `DataBack` instance, after this app instance is passed to
+  # `runDbApp()`
+  db := '<uninitialized>'
+
+  # this method is called before existing back data from the disk file is
+  # restored by replaying history, machinery necessary for history replay
+  # needs to be setup by this method.
+  method bootstrap() {
+    # `DataBack` instance will put `this` App as its first super,
+    # `run()` is called against the db instance, so `that` here is
+    # the actual `DataBack` instance.
+    this.db = that
+
+    # import some schema - business classes, indices get created - from
+    # some lib
+    import * DbLib( db ) into this
+
+    # define more business classes, create more top-level indices, etc.
+    # ...
+  }
+
+  method newDept( nPersons=200 ) {
+    depart = Depart( '' ++ UUID() )
+    for _ from range( nPersons ) do {
+      person = Person( '' ++ UUID(), 30 )
+      WorkFor( person, depart, 3721 )
+    }
+    db.syncData()
+    console.info <| 'Dept created: ' ++ depart
+    return depart
+  }
+
+  method keepPressuring(*** apk ) {
+
+    doneSig = sink
+    doneSig <-1
+
+    for _ from doneSig do { go {
+        newDept(*** apk )
+        doneSig <-1
+    } }
+
+  }
+
+  # this is the *main* method of the application, all transactional changes
+  # are backed to disk file during the course of this method running.
+  # once this method returns, the db is shutdown.
+  method run() {
+    console.info<| '''
+ * You are in the DB app console now, issue shutdown to commit all changes.
+ * Note that quiting the process (by Ctrl^D) from within the server, without
+   shutting down first, will leave your changes uncommitted.
+'''
+    while true {
+      case console.readCommand( ps1= "(app)Đ: ", ps2= "Đ| " ) of {
+        shutdown -> { break }
+        batteries.quit -> { # the builtin `quit` command
+          console.print(
+            "You don't quit a db app console, use `shutdown` instead." )
+        }
+        { cmdVal } -> {
+          console.print( cmdVal )
+          cmdVal = nil # clear it
+        }
+      }
+    } $=> { # catch exceptions
+
+      { { IOError:exc } } -> {
+        console.fatal <| 'IO error - ' ++ exc
+        rethrow # escalate it to the program loop of the
+        # host interpreter, let it decide what to do.
+      }
+
+      { cmdExc } -> {
+        console.print( 'Recovered from error', exception=cmdExc )
+      }
+
+    }
+
+    console.print( 'DB app shutting down ...' )
+
+  }
+}
