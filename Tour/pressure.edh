@@ -12,17 +12,18 @@ import * 'db/demo/pressure'
 
 runDbApp( '/dev/shm/demo', DbApp() )
 
-nPersionPerDept = 100
+nPersionPerDept = 60
+keep = false
 conc = 3
 
 # test water
-newDept( nPersionPerDept )
+newDept( nPersionPerDept, keep )
 
 # single threaded pressure
-# keepPressuring( nPersionPerDept )
+# keepPressuring( nPersionPerDept, keep )
 
 # concurrent pressure
-for _ from range( conc ) do { go keepPressuring( nPersionPerDept ) }
+for _ from range( conc ) do { go keepPressuring( nPersionPerDept, keep ) }
 
 # keep the program from terminating on end of stdin
 for _ from sink do error( 'impossible' )

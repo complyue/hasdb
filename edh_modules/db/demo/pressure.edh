@@ -33,15 +33,25 @@ export class DbApp {
     # ...
   }
 
-  method newDept( nPersons=200 ) {
+  method newDept( nPersons=200, keep=true ) {
     depart = Depart( '' ++ UUID() )
+    persons = []
     for _ from range( nPersons ) do {
       person = Person( '' ++ UUID(), 30 )
       WorkFor( person, depart, 3721 )
+      person => persons
     }
     db.syncData()
     console.info <| 'Dept created: ' ++ depart
-    return depart
+    if keep then { return depart }
+
+    for p from persons do {
+      p.delete()
+    }
+    depart.delete()
+    db.syncData()
+    console.info <| 'Dept deleted: ' ++ depart
+    return nil
   }
 
   method keepPressuring(*** apk ) {
